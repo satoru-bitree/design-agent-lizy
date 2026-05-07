@@ -9,9 +9,7 @@ type PageProps = { params: { id: string } };
 export function generateMetadata({ params }: PageProps): Metadata {
   const project = getProject(params.id);
   return {
-    title: project
-      ? `${project.name} · Agentic Creative`
-      : "프로젝트 · Agentic Creative",
+    title: project ? project.name : "프로젝트",
   };
 }
 

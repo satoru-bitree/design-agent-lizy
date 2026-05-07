@@ -33,22 +33,28 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const SITE_TITLE = "Lizy · Agentic Creative";
+// Single source of truth for the product brand name shown in browser tabs,
+// OS title bars, and social share previews. Page-level metadata only declares
+// its own segment — the suffix is appended via title.template below.
+const SITE_NAME = "Lizy · 디자인 에이전트";
 const SITE_DESCRIPTION =
   "AI 에이전트가 시장별·포맷별 크리에이티브 에셋을 자동 생성합니다.";
 
 export const metadata: Metadata = {
-  title: SITE_TITLE,
+  title: {
+    default: SITE_NAME,
+    template: `%s · ${SITE_NAME}`,
+  },
   description: SITE_DESCRIPTION,
   icons: {
     icon: "/logo/lizy-mark.svg",
   },
   openGraph: {
-    title: SITE_TITLE,
+    title: SITE_NAME,
     description: SITE_DESCRIPTION,
     locale: "ko_KR",
     type: "website",
-    siteName: "Agentic Creative",
+    siteName: SITE_NAME,
   },
 };
 
