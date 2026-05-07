@@ -1,0 +1,17 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { display: flex; flex-direction: column; gap: 8px; padding: 28px 32px; }
+  .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .sw { display: flex; flex-direction: column; gap: 8px; }
+  .chip { aspect-ratio: 1.6 / 1; border-radius: 12px; border: 1px solid var(--border); }
+  .lbl { font-size: 11px; color: var(--fg-muted); letter-spacing: 0.02em; }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--fg-dim); }
+</style></head><body><div class="card">
+<div class="swatches">
+  <div class="sw"><div class="chip" style="background:#0D0D0D"></div><div class="lbl">bg</div><div class="hex">#0D0D0D</div></div>
+  <div class="sw"><div class="chip" style="background:#1A1A1A"></div><div class="lbl">surface-1</div><div class="hex">#1A1A1A</div></div>
+  <div class="sw"><div class="chip" style="background:#1F1F1F"></div><div class="lbl">surface-3</div><div class="hex">#1F1F1F</div></div>
+  <div class="sw"><div class="chip" style="background:#262626"></div><div class="lbl">surface-2</div><div class="hex">#262626</div></div>
+  <div class="sw"><div class="chip" style="background:#2A2A2A"></div><div class="lbl">border</div><div class="hex">#2A2A2A</div></div>
+</div>
+</div></body></html>

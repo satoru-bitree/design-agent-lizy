@@ -1,0 +1,19 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 28px 32px; display: flex; flex-direction: column; gap: 14px; }
+  .row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 16px; }
+  .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .demo { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--fg-dim); }
+  .track { position: relative; width: 96px; height: 14px; }
+  .ball { position: absolute; top: 0; left: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--mint); animation-iteration-count: infinite; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .pulse { animation: pulse 1.8s cubic-bezier(0.2,0.8,0.2,1) infinite; }
+  @keyframes slide { 0%,15%{transform:translateX(0)} 50%,65%{transform:translateX(82px)} 100%{transform:translateX(0)} }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }
+  .curve { font-family: var(--font-mono); font-size: 11px; color: var(--fg); }
+</style></head><body><div class="card">
+<div class="row"><div class="lbl">Easing</div><div class="curve">cubic-bezier(0.2, 0.8, 0.2, 1) — calm out-curve</div></div>
+<div class="row"><div class="lbl">160 · micro</div><div class="demo"><div class="track"><div class="ball" style="animation-name:slide;animation-duration:2.4s"></div></div><span>hover · press · scale 0.98</span></div></div>
+<div class="row"><div class="lbl">260 · base</div><div class="demo"><div class="track"><div class="ball" style="animation-name:slide;animation-duration:3.2s"></div></div><span>modal show · panel slide · default</span></div></div>
+<div class="row"><div class="lbl">420 · page</div><div class="demo"><div class="track"><div class="ball" style="animation-name:slide;animation-duration:4.4s"></div></div><span>route change · large transitions</span></div></div>
+<div class="row"><div class="lbl">Status pulse</div><div class="demo"><div class="ball pulse" style="position:relative"></div><span class="kr">대기 중 / LIVE SYNC — 1.8s opacity loop</span></div></div>
+</div></body></html>

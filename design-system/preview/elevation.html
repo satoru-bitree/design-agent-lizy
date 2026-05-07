@@ -1,0 +1,14 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 32px; display: flex; gap: 32px; align-items: center; justify-content: center; }
+  .item { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .surface { width: 120px; height: 80px; border-radius: 12px; background: var(--surface-1); border: 1px solid var(--border); }
+  .fab { width: 56px; height: 56px; border-radius: 50%; background: var(--mint); display: flex; align-items: center; justify-content: center; color: var(--bg); font-size: 22px; box-shadow: 0 4px 24px rgba(0,200,150,0.25); }
+  .modal { width: 120px; height: 80px; border-radius: 16px; background: var(--surface-1); border: 1px solid var(--border); box-shadow: 0 24px 48px rgba(0,0,0,0.5); }
+  .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); letter-spacing: 0.04em; }
+  .val { font-size: 10px; color: var(--fg-dim); text-align: center; max-width: 140px; }
+</style></head><body><div class="card">
+  <div class="item"><div class="surface"></div><div class="lbl">flat</div><div class="val">no shadow · hairline border only</div></div>
+  <div class="item"><div class="modal"></div><div class="lbl">modal</div><div class="val">0 24 48 rgba(0,0,0,.5)</div></div>
+  <div class="item"><div class="fab">+</div><div class="lbl">fab</div><div class="val">0 4 24 mint .25 — only colored shadow in system</div></div>
+</div></body></html>

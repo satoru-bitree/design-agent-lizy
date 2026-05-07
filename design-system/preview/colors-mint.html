@@ -1,0 +1,20 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { display: flex; flex-direction: column; gap: 16px; padding: 28px 32px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .sw { display: flex; flex-direction: column; gap: 6px; }
+  .chip { aspect-ratio: 1.6/1; border-radius: 12px; }
+  .lbl { font-size: 11px; color: var(--fg-muted); }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--fg-dim); }
+</style></head><body><div class="card">
+<div class="row">
+  <div class="sw"><div class="chip" style="background:#00C896"></div><div class="lbl">mint (primary)</div><div class="hex">#00C896</div></div>
+  <div class="sw"><div class="chip" style="background:#0BD9A5"></div><div class="lbl">mint-hover</div><div class="hex">#0BD9A5</div></div>
+  <div class="sw"><div class="chip" style="background:#0EB88C"></div><div class="lbl">mint-press</div><div class="hex">#0EB88C</div></div>
+  <div class="sw"><div class="chip" style="background:#197A61"></div><div class="lbl">mint-deep</div><div class="hex">#197A61</div></div>
+</div>
+<div class="row" style="grid-template-columns: 1fr 1fr;">
+  <div class="sw"><div class="chip" style="background:rgba(0,200,150,0.12);border:1px solid rgba(0,200,150,0.25)"></div><div class="lbl">mint-soft (tint)</div><div class="hex">rgba(0,200,150,.12)</div></div>
+  <div class="sw"><div class="chip" style="background:#0D0D0D;border:2px solid rgba(0,200,150,0.45);box-shadow:0 0 0 2px #0D0D0D inset"></div><div class="lbl">mint-ring (focus)</div><div class="hex">rgba(0,200,150,.45)</div></div>
+</div>
+</div></body></html>

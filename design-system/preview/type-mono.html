@@ -1,0 +1,23 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 28px 32px; display: flex; flex-direction: column; gap: 14px; }
+  .row { display: flex; align-items: center; gap: 16px; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: var(--fg-dim); }
+  .label { font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); letter-spacing: 0.06em; text-transform: uppercase; min-width: 90px; }
+  .swatch-row { display: flex; gap: 12px; align-items: center; padding: 10px 14px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
+  .sw { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); }
+  .stat { font-size: 12px; color: var(--fg); }
+</style></head><body><div class="card">
+<div class="row"><div class="label">Hex codes</div>
+  <div class="swatch-row"><div class="sw" style="background:#00C896"></div><span class="mono">#00C896</span></div>
+  <div class="swatch-row"><div class="sw" style="background:#FFFFFF"></div><span class="mono">#FFFFFF</span></div>
+  <div class="swatch-row"><div class="sw" style="background:#262626"></div><span class="mono">#262626</span></div>
+</div>
+<div class="row"><div class="label">Numerals</div>
+  <span class="stat">9:16 · 30s · 4K Export</span>
+  <span class="stat" style="color:var(--fg-muted)">·</span>
+  <span class="stat">₩50,000</span>
+  <span class="stat" style="color:var(--fg-muted)">·</span>
+  <span class="stat">150ml · 3분 이내</span>
+</div>
+</div></body></html>

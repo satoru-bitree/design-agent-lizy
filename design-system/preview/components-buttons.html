@@ -1,0 +1,28 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 28px 32px; display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); letter-spacing: 0.06em; text-transform: uppercase; min-width: 100px; }
+  .btn { font-family: var(--font-body); font-size: 14px; font-weight: 600; padding: 14px 22px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  .btn-primary { background: var(--mint); color: var(--bg); }
+  .btn-primary:hover { background: var(--mint-hover); }
+  .btn-secondary { background: transparent; color: var(--fg); border-color: var(--border-strong); }
+  .btn-tertiary { background: transparent; color: var(--fg); border: none; padding: 14px 16px; }
+  .btn-disabled { background: var(--mint); color: var(--bg); opacity: 0.4; cursor: not-allowed; }
+  .spark { font-size: 14px; }
+</style></head><body><div class="card">
+<div class="row"><div class="lbl">Primary</div>
+  <button class="btn btn-primary"><span class="spark">✦</span><span class="kr">에셋 생성하기</span></button>
+  <button class="btn btn-primary"><span class="kr">수정 요청 제출</span><span>→</span></button>
+</div>
+<div class="row"><div class="lbl">Secondary</div>
+  <button class="btn btn-secondary"><span class="kr">수정 요청</span></button>
+  <button class="btn btn-secondary"><span class="kr">승인</span></button>
+</div>
+<div class="row"><div class="lbl">Tertiary</div>
+  <button class="btn btn-tertiary"><span class="kr">취소</span></button>
+</div>
+<div class="row"><div class="lbl">Disabled</div>
+  <button class="btn btn-disabled"><span class="kr">에셋 생성하기</span></button>
+</div>
+</div></body></html>

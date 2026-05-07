@@ -1,0 +1,24 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; max-width: 560px; }
+  .field { display: flex; flex-direction: column; gap: 8px; }
+  .label { font-size: 12px; color: var(--fg-muted); font-weight: 500; }
+  .input { background: var(--surface-2); border: 1px solid transparent; border-radius: 12px; padding: 14px 16px; color: var(--fg); font: 14px var(--font-body); }
+  .input::placeholder { color: var(--fg-faint); }
+  .input.focused { border-color: var(--mint); box-shadow: 0 0 0 3px rgba(0,200,150,0.15); }
+  .select { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; color: var(--fg); font-size: 14px; }
+  .chev { color: var(--fg-muted); display: inline-flex; align-items: center; }
+  .ta { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; min-height: 80px; color: var(--fg-faint); font: 14px var(--font-body); border: 1px solid transparent; }
+</style></head><body><div class="card">
+<div class="field"><div class="label kr">타깃 시장</div>
+  <div class="select kr"><span>스위스 (독일어)</span>
+    <span class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+  </div>
+</div>
+<div class="field"><div class="label kr">브랜드 메시지</div>
+  <div class="ta kr">예: 일상 속의 감칠맛, 자연스럽게</div>
+</div>
+<div class="field"><div class="label kr">제품 SKU (focus)</div>
+  <input class="input focused kr" placeholder="연두 150ml" value="연두 150ml" />
+</div>
+</div></body></html>

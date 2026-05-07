@@ -1,0 +1,28 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 28px 32px; display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); letter-spacing: 0.06em; text-transform: uppercase; min-width: 100px; }
+  .pill { font-size: 13px; padding: 9px 18px; border-radius: 9999px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .pill-on { background: var(--mint); color: var(--bg); font-weight: 600; }
+  .pill-off { background: var(--surface-2); color: var(--fg-dim); }
+  .pill-on-outline { background: transparent; border: 1.5px solid var(--mint); color: var(--mint); font-weight: 600; }
+  .check { font-size: 11px; }
+</style></head><body><div class="card">
+<div class="row"><div class="lbl">Filled</div>
+  <span class="pill pill-on"><span class="check">✓</span><span class="kr">더 밝은 톤</span></span>
+  <span class="pill pill-off kr">취소</span>
+  <span class="pill pill-off kr">취소</span>
+  <span class="pill pill-off kr">취소</span>
+</div>
+<div class="row"><div class="lbl">Outline (selected)</div>
+  <span class="pill pill-on-outline"><span class="check">✓</span><span class="kr">더 밝은 톤</span></span>
+  <span class="pill pill-off kr">스타일 샷</span>
+  <span class="pill pill-off kr">숏폼 영상</span>
+</div>
+<div class="row"><div class="lbl">Asset types</div>
+  <span class="pill pill-on kr">패키지 디자인</span>
+  <span class="pill pill-on kr">스타일 샷</span>
+  <span class="pill pill-on kr">숏폼 영상</span>
+</div>
+</div></body></html>

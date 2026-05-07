@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <title>Lizy · Agentic Creative — UI kit (print)</title>
+  <link rel="stylesheet" href="../../colors_and_type.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,500&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); }
+    * { box-sizing: border-box; }
+    @keyframes lzPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    @keyframes lzSpin  { to { transform: rotate(360deg); } }
+
+    .print-page { width: 1280px; min-height: 820px; background: var(--bg); position: relative; }
+    .print-label { position: absolute; top: 12px; right: 24px; font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); letter-spacing: 0.06em; text-transform: uppercase; z-index: 1; }
+
+    @page { size: 1280px 900px; margin: 0; }
+    @media print {
+      html, body { background: var(--bg) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .print-page { page-break-after: always; break-after: page; min-height: 880px; }
+      .print-page:last-child { page-break-after: auto; break-after: auto; }
+      ::-webkit-scrollbar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="icons.jsx"></script>
+  <script type="text/babel" src="controls.jsx"></script>
+  <script type="text/babel" src="Header.jsx"></script>
+  <script type="text/babel" src="Sidebar.jsx"></script>
+  <script type="text/babel" src="BrandGuide.jsx"></script>
+  <script type="text/babel" src="Dashboard.jsx"></script>
+  <script type="text/babel" src="ReviewBoard.jsx"></script>
+  <script type="text/babel" src="RevisionModal.jsx"></script>
+
+  <script type="text/babel">
+    /* global React, ReactDOM, Header, Sidebar, Dashboard, ReviewBoard, RevisionModal */
+    const PrintApp = () => (
+      <div>
+        <div className="print-page">
+          <div className="print-label">01 · Dashboard / 새 에셋 요청</div>
+          <Header active="대시보드"/>
+          <Dashboard/>
+        </div>
+        <div className="print-page">
+          <div className="print-label">02 · Review / 에셋 생성 완료</div>
+          <Header active="에셋"/>
+          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr' }}>
+            <Sidebar active="프로젝트"/>
+            <ReviewBoard onRevise={() => {}} statuses={{ pkg: 'pending', styled: 'pending', video: 'pending' }} setStatus={() => {}}/>
+          </div>
+        </div>
+        <div className="print-page" style={{ position: 'relative' }}>
+          <div className="print-label">03 · Revision Modal / 스타일 샷 #2</div>
+          <Header active="에셋"/>
+          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', filter: 'brightness(0.55)' }}>
+            <Sidebar active="프로젝트"/>
+            <ReviewBoard onRevise={() => {}} statuses={{ pkg: 'pending', styled: 'pending', video: 'pending' }} setStatus={() => {}}/>
+          </div>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <div style={{ pointerEvents: 'none' }}>
+              <RevisionModal kind="styled" onClose={() => {}} onSubmit={() => {}}/>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+    document.fonts.ready.then(() => {
+      ReactDOM.createRoot(document.getElementById('root')).render(<PrintApp/>);
+      setTimeout(() => window.print(), 1200);
+    });
+  </script>
+</body>
+</html>

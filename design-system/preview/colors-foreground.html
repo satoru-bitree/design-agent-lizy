@@ -1,0 +1,14 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 28px 32px; }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  .row { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 14px; }
+  .sw { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border); }
+  .name { font-size: 13px; }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--fg-dim); }
+</style></head><body><div class="card"><div class="stack">
+  <div class="row"><div class="sw" style="background:#FFFFFF"></div><div class="name" style="color:#FFF">fg — body, headings</div><div class="hex">#FFFFFF</div></div>
+  <div class="row"><div class="sw" style="background:#B5B5B5"></div><div class="name" style="color:#B5B5B5">fg-dim — subtitle</div><div class="hex">#B5B5B5</div></div>
+  <div class="row"><div class="sw" style="background:#6B6B6B"></div><div class="name" style="color:#6B6B6B">fg-muted — labels, meta</div><div class="hex">#6B6B6B</div></div>
+  <div class="row"><div class="sw" style="background:#3F3F3F"></div><div class="name" style="color:#3F3F3F">fg-faint — placeholder, disabled</div><div class="hex">#3F3F3F</div></div>
+</div></div></body></html>

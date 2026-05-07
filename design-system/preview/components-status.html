@@ -1,0 +1,27 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .card { padding: 28px 32px; display: flex; flex-direction: column; gap: 14px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); letter-spacing: 0.06em; text-transform: uppercase; min-width: 80px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 9999px; font-size: 12px; }
+  .pill-success { background: rgba(0,200,150,0.12); color: var(--mint); }
+  .pill-warn { background: rgba(245,165,36,0.14); color: #F5A524; }
+  .pill-info { background: var(--surface-2); color: var(--fg-dim); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dot-mint { background: var(--mint); animation: pulse 1.5s ease-in-out infinite; }
+  .dot-warn { background: #F5A524; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+</style></head><body><div class="card">
+<div class="row"><div class="lbl">Active</div>
+  <span class="pill pill-success"><span class="dot dot-mint"></span>LIVE SYNC</span>
+  <span class="pill pill-success"><span class="dot dot-mint"></span><span class="kr">에이전트 모니터링 활성화됨</span></span>
+</div>
+<div class="row"><div class="lbl">Pending</div>
+  <span class="pill pill-info"><span class="dot dot-mint"></span><span class="kr">샘플 에이전트: 대기 중</span></span>
+  <span class="pill pill-info"><span class="dot dot-mint"></span><span class="kr">예상 재생성 시간: 3분 이내</span></span>
+</div>
+<div class="row"><div class="lbl">Review</div>
+  <span class="pill pill-success kr">검토 대기 중</span>
+  <span class="pill pill-warn"><span class="kr">수정 요청</span></span>
+</div>
+</div></body></html>

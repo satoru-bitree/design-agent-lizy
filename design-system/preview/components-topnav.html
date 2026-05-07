@@ -1,0 +1,41 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,400;1,9..144,500&display=swap" rel="stylesheet">
+<style>
+  body { padding: 28px; }
+  .nav { background: var(--bg); display: flex; align-items: center; justify-content: space-between; padding: 14px 26px; border-radius: 14px; border: 1px solid var(--border); }
+  .left { display: flex; align-items: center; gap: 32px; }
+  .brand { display: flex; flex-direction: column; line-height: 1; }
+  .wm { font-family: 'Fraunces', serif; font-style: italic; font-weight: 400; font-size: 26px; color: var(--fg); letter-spacing: -0.02em; line-height: 1; font-variation-settings: "opsz" 72; }
+  .wm em { font-style: italic; color: var(--mint); font-weight: 500; }
+  .sub { font-family: var(--font-body); font-size: 9px; color: var(--fg-muted); margin-top: 6px; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 500; }
+  .divider { width: 1px; height: 22px; background: var(--border); }
+  .links { display: flex; gap: 26px; align-items: center; }
+  .link { font-size: 13px; color: var(--fg-muted); }
+  .link.active { color: var(--mint); font-weight: 600; }
+  .right { display: flex; gap: 16px; align-items: center; color: var(--fg-dim); }
+  .ic { width: 18px; height: 18px; }
+  .av { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg,#5a4a3a,#2a1f15); border: 1.5px solid var(--mint); }
+</style></head><body>
+<div class="nav">
+  <div class="left">
+    <div class="brand">
+      <span class="wm">Liz<em>y</em></span>
+      <span class="sub">Design Agent</span>
+    </div>
+    <div class="divider"></div>
+    <div class="links">
+      <span class="link active kr">대시보드</span>
+      <span class="link kr">에셋</span>
+      <span class="link kr">워크플로우</span>
+      <span class="link kr">히스토리</span>
+    </div>
+  </div>
+  <div class="right">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <div class="av"></div>
+  </div>
+</div>
+</body></html>
