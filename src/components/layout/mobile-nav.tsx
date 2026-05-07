@@ -7,8 +7,6 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
   Menu,
   X,
-  Folder,
-  Sparkles,
   Palette,
   LineChart,
   type LucideIcon,
@@ -17,14 +15,13 @@ import { cn } from "@/lib/utils";
 
 const TABS: readonly { label: string; href: string }[] = [
   { label: "대시보드", href: "/dashboard" },
+  { label: "프로젝트", href: "/projects" },
   { label: "에셋", href: "/assets" },
   { label: "워크플로우", href: "/workflows" },
-  { label: "히스토리", href: "/history" },
 ] as const;
 
+// `프로젝트` 는 TABS 에 이미 있으므로 작업 섹션에서는 중복 노출 방지.
 const SIDE_ITEMS: readonly { label: string; href: string; icon: LucideIcon }[] = [
-  { label: "프로젝트", href: "/projects", icon: Folder },
-  { label: "생성 내역", href: "/history", icon: Sparkles },
   { label: "스타일 모델", href: "/style-models", icon: Palette },
   { label: "통계·분석", href: "/analytics", icon: LineChart },
 ] as const;

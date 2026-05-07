@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "대시보드", href: "/dashboard" },
+  { label: "프로젝트", href: "/projects" },
   { label: "에셋", href: "/assets" },
   { label: "워크플로우", href: "/workflows" },
-  { label: "히스토리", href: "/history" },
 ] as const;
 
 export type TopNavProps = {

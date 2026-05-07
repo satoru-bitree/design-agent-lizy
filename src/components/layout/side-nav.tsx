@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Folder,
-  Sparkles,
   Palette,
   LineChart,
   type LucideIcon,
@@ -15,7 +14,6 @@ type NavItem = { label: string; href: string; icon: LucideIcon };
 
 const SIDE_NAV_ITEMS: readonly NavItem[] = [
   { label: "프로젝트", href: "/projects", icon: Folder },
-  { label: "생성 내역", href: "/history", icon: Sparkles },
   { label: "스타일 모델", href: "/style-models", icon: Palette },
   { label: "통계·분석", href: "/analytics", icon: LineChart },
 ] as const;
