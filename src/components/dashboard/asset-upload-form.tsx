@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { CloudUpload, ChevronDown, Check } from "lucide-react";
+import { CloudUpload, ChevronDown, X } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,7 @@ type AssetType = (typeof ASSET_TYPES)[number];
 
 export function AssetUploadForm() {
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [market, setMarket] = useState<string>(MARKETS[0]);
   const [assetTypes, setAssetTypes] = useState<Set<AssetType>>(
     new Set(ASSET_TYPES),
@@ -29,6 +30,16 @@ export function AssetUploadForm() {
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) setFile(accepted[0]);
   }, []);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -66,10 +77,13 @@ export function AssetUploadForm() {
             {...getRootProps({
               role: "button",
               tabIndex: 0,
-              "aria-label": "제품 이미지 업로드 (PNG 또는 JPG, 최대 10MB)",
+              "aria-label": file
+                ? `업로드된 이미지: ${file.name}. 클릭하여 다른 이미지로 교체`
+                : "제품 이미지 업로드 (PNG 또는 JPG, 최대 10MB)",
             })}
             className={cn(
-              "flex cursor-pointer flex-col items-center gap-3 rounded-lg border-[1.5px] border-dashed bg-surface-2 px-6 py-8 outline-none transition-colors duration-base ease-lz focus-visible:border-mint focus-visible:ring-2 focus-visible:ring-mint-ring",
+              "relative flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-[1.5px] bg-surface-2 outline-none transition-colors duration-base ease-lz focus-visible:border-mint focus-visible:ring-2 focus-visible:ring-mint-ring",
+              file ? "border-solid p-4" : "border-dashed px-6 py-8",
               isDragActive
                 ? "border-mint bg-mint-soft"
                 : file
@@ -78,22 +92,52 @@ export function AssetUploadForm() {
             )}
           >
             <input {...getInputProps({ id: "product-image", className: "sr-only" })} />
-            <div
-              className={cn(
-                "flex h-9 w-9 items-center justify-center rounded-pill bg-surface-3 text-mint transition-transform duration-micro ease-lz",
-                isDragActive && "-translate-y-0.5",
-              )}
-            >
-              {file ? (
-                <Check className="h-5 w-5" strokeWidth={1.75} />
-              ) : (
-                <CloudUpload className="h-5 w-5" strokeWidth={1.5} />
-              )}
-            </div>
-            <div className="font-kr text-[14px] font-semibold text-fg">
-              {file ? file.name : "제품 사진을 드래그 앤 드롭 하세요"}
-            </div>
-            <div className="font-kr text-meta text-fg-muted">PNG, JPG · 최대 10MB</div>
+            {file && previewUrl ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFile(null);
+                  }}
+                  aria-label="이미지 제거"
+                  className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill bg-bg/80 text-fg-dim outline-none transition-colors duration-micro ease-lz hover:bg-bg hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt={file.name}
+                  className="max-h-[200px] w-auto rounded-md object-contain"
+                />
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="max-w-full truncate px-6 font-kr text-[13px] font-semibold text-fg">
+                    {file.name}
+                  </div>
+                  <div className="font-mono text-meta text-fg-muted">
+                    {formatFileSize(file.size)} · 클릭 또는 드래그하여 교체
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-pill bg-surface-3 text-mint transition-transform duration-micro ease-lz",
+                    isDragActive && "-translate-y-0.5",
+                  )}
+                >
+                  <CloudUpload className="h-5 w-5" strokeWidth={1.5} />
+                </div>
+                <div className="font-kr text-[14px] font-semibold text-fg">
+                  제품 사진을 드래그 앤 드롭 하세요
+                </div>
+                <div className="font-kr text-meta text-fg-muted">
+                  PNG, JPG · 최대 10MB
+                </div>
+              </>
+            )}
           </div>
         </Field>
 
@@ -185,13 +229,19 @@ function Field({
     );
   }
   return (
-    <label className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <span className="font-kr text-label font-medium text-fg-muted">
         {label}
       </span>
       {children}
-    </label>
+    </div>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function Pill({
