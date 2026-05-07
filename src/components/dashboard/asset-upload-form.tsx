@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { CloudUpload, ChevronDown, X } from "lucide-react";
+import { CloudUpload, ChevronDown, X, Info } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
+import type { AssetType } from "@/lib/mock-data";
+import type { BrandState } from "@/lib/stores/jobs-store";
 
 const MARKETS = [
   "스위스 (독일어)",
@@ -15,21 +17,54 @@ const MARKETS = [
   "일본",
 ] as const;
 
-const ASSET_TYPES = ["패키지 디자인", "스타일 샷", "숏폼 영상"] as const;
-type AssetType = (typeof ASSET_TYPES)[number];
+const ASSET_TYPE_ORDER: readonly AssetType[] = [
+  "package",
+  "style_shot",
+  "short_video",
+] as const;
 
-export function AssetUploadForm() {
+const ASSET_TYPE_LABEL: Record<AssetType, string> = {
+  package: "패키지 디자인",
+  style_shot: "스타일 샷",
+  short_video: "숏폼 영상",
+};
+
+export type SubmitData = {
+  file: File;
+  market: string;
+  assetTypes: AssetType[];
+  brandMessage: string;
+};
+
+export type AssetUploadFormProps = {
+  brandStatus: BrandState["status"];
+  submitting?: boolean;
+  onSubmit?: (data: SubmitData) => void;
+};
+
+export function AssetUploadForm({
+  brandStatus,
+  submitting = false,
+  onSubmit,
+}: AssetUploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [market, setMarket] = useState<string>(MARKETS[0]);
   const [assetTypes, setAssetTypes] = useState<Set<AssetType>>(
-    new Set(ASSET_TYPES),
+    new Set(ASSET_TYPE_ORDER),
   );
   const [message, setMessage] = useState("");
 
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) setFile(accepted[0]);
   }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] },
+    maxSize: 10 * 1024 * 1024,
+    multiple: false,
+  });
 
   useEffect(() => {
     if (!file) {
@@ -41,13 +76,6 @@ export function AssetUploadForm() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] },
-    maxSize: 10 * 1024 * 1024,
-    multiple: false,
-  });
-
   const toggleType = (t: AssetType) => {
     setAssetTypes((prev) => {
       const next = new Set(prev);
@@ -56,6 +84,50 @@ export function AssetUploadForm() {
       return next;
     });
   };
+
+  // Validation precedence: submitting → file → types → brand state
+  const disabledReason = submitting
+    ? null
+    : !file
+      ? "제품 이미지를 업로드하면 다음 단계로 진행됩니다."
+      : assetTypes.size === 0
+        ? "에셋 유형을 1개 이상 선택해주세요."
+        : brandStatus === "idle"
+          ? "먼저 브랜드 가이드를 적용하면 시장에 맞춘 결과물을 받을 수 있습니다."
+          : brandStatus === "analyzing"
+            ? "브랜드 분석이 끝나면 활성화됩니다."
+            : brandStatus === "error"
+              ? "브랜드 분석에 실패했습니다. 다시 업로드해주세요."
+              : null;
+
+  const canSubmit = !disabledReason && !submitting;
+
+  const handleSubmit = () => {
+    if (!file || assetTypes.size === 0 || brandStatus !== "ready") return;
+    onSubmit?.({
+      file,
+      market,
+      assetTypes: ASSET_TYPE_ORDER.filter((t) => assetTypes.has(t)),
+      brandMessage: message,
+    });
+  };
+
+  const statusToneForFooter =
+    brandStatus === "ready"
+      ? "active"
+      : brandStatus === "analyzing"
+        ? "pending"
+        : brandStatus === "error"
+          ? "warning"
+          : "idle";
+  const statusLabelForFooter =
+    brandStatus === "ready"
+      ? "샘플 에이전트: 준비 완료"
+      : brandStatus === "analyzing"
+        ? "샘플 에이전트: 브랜드 분석 중"
+        : brandStatus === "error"
+          ? "샘플 에이전트: 브랜드 분석 실패"
+          : "샘플 에이전트: 대기 중";
 
   return (
     <div className="flex flex-col gap-6">
@@ -157,13 +229,13 @@ export function AssetUploadForm() {
               aria-label="에셋 유형"
               className="flex flex-wrap gap-2 pt-1"
             >
-              {ASSET_TYPES.map((t) => (
+              {ASSET_TYPE_ORDER.map((t) => (
                 <Pill
                   key={t}
                   active={assetTypes.has(t)}
                   onClick={() => toggleType(t)}
                 >
-                  {t}
+                  {ASSET_TYPE_LABEL[t]}
                 </Pill>
               ))}
             </div>
@@ -184,20 +256,50 @@ export function AssetUploadForm() {
         </Field>
 
         {/* CTA */}
-        <button
-          type="button"
-          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-lg bg-mint font-body text-[14px] font-semibold text-bg outline-none transition-all duration-micro ease-lz hover:bg-mint-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint active:scale-[0.98] active:bg-mint-press"
-        >
-          <span aria-hidden className="text-[14px] leading-none">✦</span>
-          <span className="font-kr">에셋 생성하기</span>
-        </button>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            aria-disabled={!canSubmit}
+            className={cn(
+              "flex h-[52px] w-full items-center justify-center gap-2 rounded-lg font-body text-[14px] font-semibold outline-none transition-all duration-micro ease-lz focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint",
+              canSubmit
+                ? "bg-mint text-bg hover:bg-mint-hover active:scale-[0.98] active:bg-mint-press"
+                : "cursor-not-allowed bg-surface-2 text-fg-muted",
+            )}
+          >
+            {submitting ? (
+              <span className="font-kr">생성 시작 중…</span>
+            ) : (
+              <>
+                <span aria-hidden className="text-[14px] leading-none">
+                  ✦
+                </span>
+                <span className="font-kr">에셋 생성하기</span>
+              </>
+            )}
+          </button>
+          {disabledReason && (
+            <div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+              <Info
+                className="mt-[2px] h-3.5 w-3.5 shrink-0 text-mint"
+                strokeWidth={1.75}
+                aria-hidden
+              />
+              <span className="font-kr text-[13px] leading-[1.5] text-fg-dim">
+                {disabledReason}
+              </span>
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Status */}
       <div className="flex items-center gap-2">
-        <StatusDot tone="pending" />
+        <StatusDot tone={statusToneForFooter} />
         <span className="font-kr text-[13px] text-fg-dim">
-          샘플 에이전트: 대기 중
+          {statusLabelForFooter}
         </span>
       </div>
     </div>
@@ -213,8 +315,6 @@ function Field({
   htmlFor?: string;
   children: React.ReactNode;
 }) {
-  // When htmlFor is given, use a non-wrapping label that points to the input id;
-  // otherwise wrap in <label> for click-to-focus semantics.
   if (htmlFor) {
     return (
       <div className="flex flex-col gap-2">
@@ -238,12 +338,6 @@ function Field({
   );
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function Pill({
   active,
   onClick,
@@ -265,7 +359,6 @@ function Pill({
           : "border-0 bg-surface-2 px-[14px] py-[8px] font-normal text-fg-dim hover:bg-surface-3",
       )}
     >
-      {/* Animated check slot — width 0 → 18px (14 char + 4 gap), ~base 260ms */}
       <span
         aria-hidden
         className={cn(
@@ -312,4 +405,10 @@ function SelectField({
       />
     </div>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

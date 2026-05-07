@@ -133,13 +133,29 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.45" },
         },
+        // Centered modals use `fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2`.
+        // Keyframe transforms must compose the centering translate, otherwise the
+        // animation overrides the static translate utilities and the dialog
+        // visibly snaps from top-left back to center when the animation ends.
         "fade-scale-in": {
-          "0%": { opacity: "0", transform: "scale(0.96)" },
-          "100%": { opacity: "1", transform: "scale(1)" },
+          "0%": {
+            opacity: "0",
+            transform: "translate(-50%, -50%) scale(0.96)",
+          },
+          "100%": {
+            opacity: "1",
+            transform: "translate(-50%, -50%) scale(1)",
+          },
         },
         "fade-scale-out": {
-          "0%": { opacity: "1", transform: "scale(1)" },
-          "100%": { opacity: "0", transform: "scale(0.96)" },
+          "0%": {
+            opacity: "1",
+            transform: "translate(-50%, -50%) scale(1)",
+          },
+          "100%": {
+            opacity: "0",
+            transform: "translate(-50%, -50%) scale(0.96)",
+          },
         },
         "slide-in-left": {
           "0%": { transform: "translateX(-100%)" },

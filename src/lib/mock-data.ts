@@ -24,10 +24,26 @@ export type Asset = {
 };
 
 export type BrandGuide = {
+  /** URL to a logo image. Ignored if `logoWordmark` is present. */
   logo: string;
-  palette: { hex: string }[];
+  /** Set-type wordmark for brands without an SVG asset. */
+  logoWordmark?: {
+    text: string;
+    /** CSS font-family value */
+    family: string;
+    color: string;
+    weight?: 400 | 500 | 600 | 700 | 800;
+    italic?: boolean;
+    /** Letter spacing in em (default -0.02). */
+    tracking?: number;
+  };
+  palette: { hex: string; name?: string }[];
   typography: { heading: string; body: string };
   moodboard: string[];
+  /** Display name (e.g. for typography preview heading). */
+  brandName?: string;
+  /** Caption shown over the moodboard hero. */
+  moodCaption?: string;
 };
 
 export type ProjectStatus = "pending" | "in_progress" | "review" | "approved";
@@ -45,14 +61,67 @@ export type Project = {
   createdAt: string;
 };
 
-const SEMPIO_BRAND_GUIDE: BrandGuide = {
+export const SEMPIO_GUIDE: BrandGuide = {
   logo: "https://picsum.photos/seed/sempio-logo/200/80",
-  palette: [{ hex: "#00C896" }, { hex: "#FFFFFF" }, { hex: "#262626" }],
-  typography: { heading: "Manrope", body: "Inter" },
-  moodboard: [
-    "https://picsum.photos/seed/yondu-mood-1/600/600",
-    "https://picsum.photos/seed/yondu-mood-2/600/600",
+  logoWordmark: {
+    text: "Sempio",
+    family: "Georgia, serif",
+    color: "#E63946",
+    weight: 700,
+    italic: true,
+    tracking: -0.02,
+  },
+  palette: [
+    { hex: "#E63946", name: "Heritage Red" },
+    { hex: "#F1FAEE", name: "Bone" },
+    { hex: "#1D3557", name: "Ink" },
   ],
+  typography: { heading: "Manrope", body: "Inter" },
+  moodboard: ["https://picsum.photos/seed/sempio-mood-1/600/600"],
+  brandName: "Sempio",
+  moodCaption: "ARTISAN HERITAGE",
+};
+
+export const YONDU_GUIDE: BrandGuide = {
+  logo: "https://picsum.photos/seed/yondu-logo/200/80",
+  logoWordmark: {
+    text: "Yondu",
+    family: "Manrope, sans-serif",
+    color: "#5DBE8D",
+    weight: 700,
+    italic: false,
+    tracking: -0.02,
+  },
+  palette: [
+    { hex: "#5DBE8D", name: "Mint Leaf" },
+    { hex: "#F4F1DE", name: "Cream" },
+    { hex: "#264653", name: "Forest" },
+  ],
+  typography: { heading: "Manrope", body: "Inter" },
+  moodboard: ["https://picsum.photos/seed/yondu-mood-1/600/600"],
+  brandName: "Yondu",
+  moodCaption: "FRESH ESSENCE",
+};
+
+export const ARIA_GUIDE: BrandGuide = {
+  logo: "https://picsum.photos/seed/aria-logo/200/80",
+  logoWordmark: {
+    text: "ARIA",
+    family: "Inter, sans-serif",
+    color: "#3B82F6",
+    weight: 700,
+    italic: false,
+    tracking: 0.04,
+  },
+  palette: [
+    { hex: "#3B82F6", name: "Signal" },
+    { hex: "#FAFAFA", name: "Snow" },
+    { hex: "#0F172A", name: "Obsidian" },
+  ],
+  typography: { heading: "Inter", body: "Inter" },
+  moodboard: ["https://picsum.photos/seed/aria-mood-1/600/600"],
+  brandName: "ARIA",
+  moodCaption: "DIGITAL CLARITY",
 };
 
 const PROJ_1: Project = {
@@ -60,7 +129,7 @@ const PROJ_1: Project = {
   name: "연두 150ml · 스위스 · 3종",
   status: "review",
   market: "스위스(독일어)",
-  brandGuide: SEMPIO_BRAND_GUIDE,
+  brandGuide: YONDU_GUIDE,
   productImage: "https://picsum.photos/seed/yondu-product/800/800",
   brandMessage:
     "일상의 작은 가치들을 자연스럽게 — 한국적 정서와 모던한 감각의 조화",

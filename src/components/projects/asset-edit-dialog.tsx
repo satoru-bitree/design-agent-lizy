@@ -41,7 +41,7 @@ export type AssetEditDialogProps = {
   kind: AssetType;
   currentImageUrl: string;
   currentImageAlt?: string;
-  onSubmit?: (payload: { quickFix: QuickFix; note: string }) => void;
+  onSubmit?: (payload: { quickFix: QuickFix | null; note: string }) => void;
 };
 
 export function AssetEditDialog({
@@ -53,7 +53,9 @@ export function AssetEditDialog({
   onSubmit,
 }: AssetEditDialogProps) {
   const { title, subtitle } = TITLES[kind];
-  const [quickFix, setQuickFix] = useState<QuickFix>("더 밝은 톤");
+  // Optional — null when user wants to rely solely on the free-text note.
+  // Click an inactive chip to select; click the active chip to clear.
+  const [quickFix, setQuickFix] = useState<QuickFix | null>(null);
   const [note, setNote] = useState("");
 
   const handleSubmit = () => {
@@ -73,7 +75,7 @@ export function AssetEditDialog({
         />
 
         <DialogPrimitive.Popup
-          className="fixed left-1/2 top-1/2 z-50 max-h-[92vh] w-[calc(100%-1rem)] max-w-[880px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-surface-1 p-4 shadow-modal outline-none data-[open]:animate-fade-scale-in data-[closed]:animate-fade-scale-out md:p-8"
+          className="fixed left-1/2 top-1/2 z-50 max-h-[92vh] w-[calc(100%-1rem)] max-w-[880px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-surface-1 p-4 shadow-modal outline-none data-[open]:animate-fade-scale-in data-[closed]:animate-fade-scale-out md:p-6"
         >
           {/* Header */}
           <div className="flex items-start justify-between gap-4 border-b border-border pb-6">
@@ -105,7 +107,7 @@ export function AssetEditDialog({
               <span className="mb-2.5 font-kr text-label font-medium text-fg-muted">
                 현재 생성본
               </span>
-              <div className="relative aspect-square overflow-hidden rounded-lg bg-surface-2">
+              <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-surface-2">
                 {currentImageUrl ? (
                   <Image
                     src={currentImageUrl}
@@ -123,7 +125,7 @@ export function AssetEditDialog({
               <span className="mb-2.5 font-kr text-label font-medium text-fg-muted">
                 수정 버전 (대기 중)
               </span>
-              <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-lg border-[1.5px] border-dashed border-fg-faint bg-surface-2">
+              <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-lg border-[1.5px] border-dashed border-fg-faint bg-surface-2">
                 <RefreshCw
                   aria-hidden
                   className="h-7 w-7 text-fg-faint"
@@ -136,63 +138,64 @@ export function AssetEditDialog({
             </div>
           </div>
 
-          {/* Quick fixes */}
-          <fieldset className="mt-7">
-            <legend className="mb-3 font-kr text-label text-fg-muted">
-              빠른 수정 사항
-            </legend>
-            <div role="radiogroup" className="flex flex-wrap gap-2">
-              {QUICK_FIXES.map((q) => {
-                const active = q === quickFix;
-                return (
-                  <button
-                    key={q}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setQuickFix(q)}
-                    className={cn(
-                      "inline-flex h-9 items-center rounded-pill font-kr text-[13px] font-medium outline-none transition-all duration-200 ease-lz focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint",
-                      active
-                        ? "border-[1.5px] border-mint bg-transparent pl-[10.5px] pr-[12.5px] text-mint"
-                        : "border-0 bg-surface-2 px-[14px] text-fg-dim hover:bg-surface-3",
-                    )}
-                  >
-                    <span
-                      aria-hidden
+          {/* Quick fixes + Note — side-by-side on lg+, stacked on smaller. */}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,280px)_1fr]">
+            <fieldset>
+              <legend className="mb-3 font-kr text-label text-fg-muted">
+                빠른 수정 사항
+              </legend>
+              <div role="radiogroup" className="flex flex-wrap gap-2">
+                {QUICK_FIXES.map((q) => {
+                  const active = q === quickFix;
+                  return (
+                    <button
+                      key={q}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setQuickFix(active ? null : q)}
                       className={cn(
-                        "flex items-center overflow-hidden transition-all duration-base ease-lz",
-                        active ? "w-[20px] opacity-100" : "w-0 opacity-0",
+                        "inline-flex h-9 items-center rounded-pill font-kr text-[13px] font-medium outline-none transition-all duration-200 ease-lz focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint",
+                        active
+                          ? "border-[1.5px] border-mint bg-transparent pl-[10.5px] pr-[12.5px] text-mint"
+                          : "border-0 bg-surface-2 px-[14px] text-fg-dim hover:bg-surface-3",
                       )}
                     >
-                      <Check className="h-3.5 w-3.5" strokeWidth={2} />
-                    </span>
-                    {q}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "flex items-center overflow-hidden transition-all duration-base ease-lz",
+                          active ? "w-[20px] opacity-100" : "w-0 opacity-0",
+                        )}
+                      >
+                        <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                      </span>
+                      {q}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
 
-          {/* Free-form note */}
-          <div className="mt-6">
-            <label className="flex flex-col gap-2.5">
-              <span className="font-kr text-label text-fg-muted">
-                수정 요청 사항
-              </span>
-              <textarea
-                autoFocus
-                rows={4}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="예: 배경 밝기 증가, 제품 각도 조절, 녹색 포인트 강조 등"
-                className="w-full resize-none rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
-              />
-            </label>
+            <div>
+              <label className="flex flex-col gap-2.5">
+                <span className="font-kr text-label text-fg-muted">
+                  수정 요청 사항
+                </span>
+                <textarea
+                  autoFocus
+                  rows={3}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="예: 배경 밝기 증가, 제품 각도 조절, 녹색 포인트 강조 등"
+                  className="w-full resize-none rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
+                />
+              </label>
+            </div>
           </div>
 
           {/* Footer */}
-          <div className="mt-8 flex items-center justify-between border-t border-border pt-5">
+          <div className="mt-6 flex items-center justify-between border-t border-border pt-5">
             <div className="flex items-center gap-2">
               <StatusDot tone="active" />
               <span className="font-kr text-[13px] text-fg-dim">

@@ -3,24 +3,23 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
-const PALETTE = [
-  { swatch: "#00C896", hex: "#00C896" },
-  { swatch: "#FFFFFF", hex: "#FFFFFF" },
-  { swatch: "#262626", hex: "#262626" },
-] as const;
+export type PaletteSyncProps = {
+  palette: { hex: string; name?: string }[];
+};
 
 const FLICKER_INTERVAL_MS = 5000;
-const FLICKER_HALF_MS = 400; // 1.0 → 0.6 in 400ms, then back in 400ms = 800ms total
+const FLICKER_HALF_MS = 400;
 
 /**
  * LIVE SYNC visual cue — every 5s, one palette cell briefly dims to 0.6
  * opacity and back (800ms total), cycling across cells. Honors
  * `prefers-reduced-motion`.
  */
-export function PaletteSync() {
+export function PaletteSync({ palette }: PaletteSyncProps) {
   const [flickerIdx, setFlickerIdx] = useState(-1);
 
   useEffect(() => {
+    if (palette.length === 0) return;
     if (
       typeof window === "undefined" ||
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -34,7 +33,7 @@ export function PaletteSync() {
     const tick = () => {
       setFlickerIdx(i);
       restoreTimer = setTimeout(() => setFlickerIdx(-1), FLICKER_HALF_MS);
-      i = (i + 1) % PALETTE.length;
+      i = (i + 1) % palette.length;
     };
 
     const interval = setInterval(tick, FLICKER_INTERVAL_MS);
@@ -42,12 +41,17 @@ export function PaletteSync() {
       clearInterval(interval);
       if (restoreTimer) clearTimeout(restoreTimer);
     };
-  }, []);
+  }, [palette.length]);
 
   return (
-    <div className="grid grid-cols-3 gap-2.5">
-      {PALETTE.map(({ swatch, hex }, idx) => (
-        <div key={hex} className="flex flex-col gap-1.5">
+    <div
+      className="grid gap-2.5"
+      style={{
+        gridTemplateColumns: `repeat(${Math.max(palette.length, 1)}, minmax(0, 1fr))`,
+      }}
+    >
+      {palette.map(({ hex }, idx) => (
+        <div key={`${hex}-${idx}`} className="flex flex-col gap-1.5">
           <div
             aria-hidden
             className={cn(
@@ -56,7 +60,7 @@ export function PaletteSync() {
             )}
             style={{
               aspectRatio: "1.4 / 1",
-              background: swatch,
+              background: hex,
               transitionDuration: `${FLICKER_HALF_MS}ms`,
             }}
           />

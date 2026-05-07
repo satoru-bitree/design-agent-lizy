@@ -1,52 +1,105 @@
 import Image from "next/image";
-import Link from "next/link";
-import { Camera, ExternalLink } from "lucide-react";
+import { Camera } from "lucide-react";
 import { AssetResultCard } from "@/components/projects/asset-result-card";
-import type { Asset } from "@/lib/mock-data";
+import type { AssetView } from "@/lib/stores/jobs-store";
 
 export function StyleShotCard({
-  asset,
+  view,
   onRequestRevision,
+  onOpenVariant,
 }: {
-  asset: Asset;
+  view: AssetView;
   onRequestRevision?: () => void;
+  onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
   return (
     <AssetResultCard
       title="스타일 샷"
       icon={<Camera className="h-4 w-4" strokeWidth={1.5} />}
+      view={view}
       onRequestRevision={onRequestRevision}
     >
-      <ul className="flex flex-col gap-1">
-        {asset.variants.map((v) => (
+      <Body view={view} onOpenVariant={onOpenVariant} />
+    </AssetResultCard>
+  );
+}
+
+// Auto-fit grid: 3-col when card is wide (lg layout 1+2), 2-col when narrow
+// (xl 3-col layout / mobile). Cell stays >= 130px so photos remain evaluable.
+const GRID_STYLE = {
+  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+} as const;
+
+function Body({
+  view,
+  onOpenVariant,
+}: {
+  view: AssetView;
+  onOpenVariant?: (src: string, alt: string, caption?: string) => void;
+}) {
+  if (view.status === "ready") {
+    return (
+      <ul className="grid gap-3" style={GRID_STYLE}>
+        {view.variants.map((v) => (
           <li key={v.id}>
-            <Link
-              href="#"
-              className="flex items-center gap-3 rounded-sm p-3 transition-colors duration-micro ease-lz hover:bg-surface-3"
+            <button
+              type="button"
+              onClick={() =>
+                onOpenVariant?.(
+                  v.url,
+                  v.label ?? "style shot",
+                  v.description ?? v.label,
+                )
+              }
+              aria-label={`${v.label ?? "스타일 샷"}${v.description ? ` — ${v.description}` : ""} 크게 보기`}
+              className="group flex w-full cursor-zoom-in flex-col gap-2 rounded-md outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
             >
-              <Image
-                src={v.url}
-                alt={v.label ?? "style shot"}
-                width={64}
-                height={64}
-                className="h-16 w-16 shrink-0 rounded-md object-cover"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-kr text-[14px] font-semibold text-fg">
-                  {v.label}
-                </p>
-                <p className="truncate font-kr text-[12px] text-fg-dim">
-                  {v.description}
-                </p>
+              <div className="relative aspect-square overflow-hidden rounded-md border border-border bg-surface-2 transition-colors duration-micro ease-lz group-hover:border-border-strong">
+                <Image
+                  src={v.url}
+                  alt={v.label ?? "style shot"}
+                  fill
+                  sizes="(min-width: 1280px) 130px, (min-width: 1024px) 200px, 50vw"
+                  className="object-cover transition-transform duration-base ease-lz group-hover:scale-[1.02]"
+                />
+                {v.label && (
+                  <span className="absolute left-2 top-2 rounded-[4px] bg-black/60 px-1.5 py-0.5 font-mono text-[10px] font-medium text-fg">
+                    {v.label}
+                  </span>
+                )}
               </div>
-              <ExternalLink
-                className="h-4 w-4 shrink-0 text-fg-muted"
-                strokeWidth={1.5}
-              />
-            </Link>
+              {v.description && (
+                <span className="truncate px-1 text-center font-kr text-[11px] text-fg-dim">
+                  {v.description}
+                </span>
+              )}
+            </button>
           </li>
         ))}
       </ul>
-    </AssetResultCard>
+    );
+  }
+  if (view.status === "failed") {
+    return (
+      <div className="flex aspect-[3/2] items-center justify-center rounded-md border border-state-danger/30 bg-state-danger/5 px-5 text-center font-kr text-[13px] text-state-danger">
+        {view.error}
+      </div>
+    );
+  }
+  return (
+    <ul className="grid gap-3" style={GRID_STYLE}>
+      {[0, 1, 2].map((i) => (
+        <li key={i} className="flex flex-col gap-2">
+          <div
+            aria-hidden
+            className="aspect-square animate-pulse rounded-md bg-surface-2"
+          />
+          <div
+            aria-hidden
+            className="mx-auto h-3 w-3/4 animate-pulse rounded-sm bg-surface-2"
+          />
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -6,9 +6,12 @@ import { PackageCard } from "@/components/projects/package-card";
 import { StyleShotCard } from "@/components/projects/style-shot-card";
 import { ShortVideoCard } from "@/components/projects/short-video-card";
 import { AssetEditDialog } from "@/components/projects/asset-edit-dialog";
-import type { AssetType, Project } from "@/lib/mock-data";
+import { ImageLightbox } from "@/components/projects/image-lightbox";
+import type { AssetType } from "@/lib/mock-data";
+import type { AssetView } from "@/lib/stores/jobs-store";
 
 type Editing = { kind: AssetType; image: string; alt: string };
+type Lightbox = { src: string; alt: string; caption?: string };
 
 const VALID_KINDS: readonly AssetType[] = [
   "package",
@@ -16,74 +19,72 @@ const VALID_KINDS: readonly AssetType[] = [
   "short_video",
 ] as const;
 
-export function ReviewBoard({ project }: { project: Project }) {
+export type ReviewBoardProps = {
+  assetTypes: AssetType[];
+  views: Record<AssetType, AssetView>;
+};
+
+export function ReviewBoard({ assetTypes, views }: ReviewBoardProps) {
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [lightbox, setLightbox] = useState<Lightbox | null>(null);
   const params = useSearchParams();
 
-  const packageAsset = project.assets.find((a) => a.type === "package");
-  const styleAsset = project.assets.find((a) => a.type === "style_shot");
-  const videoAsset = project.assets.find((a) => a.type === "short_video");
-
-  // Deeplink: ?edit=style_shot opens the modal for that asset on mount.
+  // Deeplink: ?edit=<kind> opens dialog only if asset is ready
   useEffect(() => {
     const raw = params.get("edit");
     if (!raw) return;
     if (!VALID_KINDS.includes(raw as AssetType)) return;
     const kind = raw as AssetType;
-    const asset = project.assets.find((a) => a.type === kind);
-    if (!asset) return;
+    const view = views[kind];
+    if (!view || view.status !== "ready") return;
     setEditing({
       kind,
-      image: asset.variants[0]?.url ?? "",
-      alt: asset.variants[0]?.label ?? "",
+      image: view.variants[0]?.url ?? "",
+      alt: view.variants[0]?.label ?? "",
     });
-  }, [params, project]);
+  }, [params, views]);
 
-  const openEdit = (kind: AssetType, image: string, alt: string) => {
-    setEditing({ kind, image, alt });
+  const openReady = (kind: AssetType) => {
+    const view = views[kind];
+    if (!view || view.status !== "ready") return;
+    setEditing({
+      kind,
+      image: view.variants[0]?.url ?? "",
+      alt: view.variants[0]?.label ?? "",
+    });
   };
+
+  const openLightbox = (src: string, alt: string, caption?: string) => {
+    setLightbox({ src, alt, caption });
+  };
+
+  const packageView = views.package;
+  const styleView = views.style_shot;
+  const videoView = views.short_video;
 
   return (
     <>
-      {/* Layout: <lg = 1-col stack, lg = 1+2 (package full top row, style+video below),
-          xl = 3-col equal */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        {packageAsset && (
+        {assetTypes.includes("package") && packageView && (
           <div className="lg:col-span-2 xl:col-span-1">
             <PackageCard
-              asset={packageAsset}
-              onRequestRevision={() =>
-                openEdit(
-                  "package",
-                  packageAsset.variants[0]?.url ?? "",
-                  packageAsset.variants[0]?.label ?? "패키지",
-                )
-              }
+              view={packageView}
+              onRequestRevision={() => openReady("package")}
+              onOpenVariant={openLightbox}
             />
           </div>
         )}
-        {styleAsset && (
+        {assetTypes.includes("style_shot") && styleView && (
           <StyleShotCard
-            asset={styleAsset}
-            onRequestRevision={() =>
-              openEdit(
-                "style_shot",
-                styleAsset.variants[0]?.url ?? "",
-                styleAsset.variants[0]?.label ?? "스타일 샷",
-              )
-            }
+            view={styleView}
+            onRequestRevision={() => openReady("style_shot")}
+            onOpenVariant={openLightbox}
           />
         )}
-        {videoAsset && (
+        {assetTypes.includes("short_video") && videoView && (
           <ShortVideoCard
-            asset={videoAsset}
-            onRequestRevision={() =>
-              openEdit(
-                "short_video",
-                videoAsset.variants[0]?.url ?? "",
-                videoAsset.variants[0]?.label ?? "숏폼 영상",
-              )
-            }
+            view={videoView}
+            onRequestRevision={() => openReady("short_video")}
           />
         )}
       </div>
@@ -96,6 +97,16 @@ export function ReviewBoard({ project }: { project: Project }) {
         kind={editing?.kind ?? "style_shot"}
         currentImageUrl={editing?.image ?? ""}
         currentImageAlt={editing?.alt}
+      />
+
+      <ImageLightbox
+        open={lightbox !== null}
+        onOpenChange={(open) => {
+          if (!open) setLightbox(null);
+        }}
+        src={lightbox?.src ?? ""}
+        alt={lightbox?.alt ?? ""}
+        caption={lightbox?.caption}
       />
     </>
   );
