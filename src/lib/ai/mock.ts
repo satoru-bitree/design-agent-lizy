@@ -28,6 +28,13 @@ const GEN_DURATIONS_MS: Record<JobKind, { min: number; max: number }> = {
   short_video: { min: 18000, max: 26000 },
 };
 
+// Revisions are scoped tweaks of an existing result — feel snappier.
+const REVISION_DURATIONS_MS: Record<JobKind, { min: number; max: number }> = {
+  package: { min: 2500, max: 4000 },
+  style_shot: { min: 2000, max: 3500 },
+  short_video: { min: 8000, max: 14000 },
+};
+
 const FIXTURES: { match: RegExp; guide: BrandGuide }[] = [
   { match: /sempio|샘표/i, guide: SEMPIO_GUIDE },
   { match: /yondu|연두/i, guide: YONDU_GUIDE },
@@ -51,9 +58,12 @@ function jitter({ min, max }: { min: number; max: number }): number {
   return min + Math.random() * (max - min);
 }
 
-function makeJobId(kind: JobKind): string {
+function makeJobId(
+  kind: JobKind,
+  durations: Record<JobKind, { min: number; max: number }> = GEN_DURATIONS_MS,
+): string {
   const ts = Date.now();
-  const dur = Math.round(jitter(GEN_DURATIONS_MS[kind]));
+  const dur = Math.round(jitter(durations[kind]));
   const rnd = Math.random().toString(36).slice(2, 8);
   return `${kind}__${ts}__${dur}__${rnd}`;
 }
@@ -151,9 +161,9 @@ class MockProvider implements AIProvider {
     kind: JobKind,
     input: GenerationInput,
   ): Promise<{ jobId: string }> {
-    void input; // mock ignores; real provider will pass to AI Gateway
     await sleep(120 + Math.random() * 180);
-    return { jobId: makeJobId(kind) };
+    const durations = input.revision ? REVISION_DURATIONS_MS : GEN_DURATIONS_MS;
+    return { jobId: makeJobId(kind, durations) };
   }
 
   async getJob(jobId: string): Promise<Job | null> {

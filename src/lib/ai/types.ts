@@ -26,6 +26,16 @@ export type GenerationInput = {
   brandGuide: BrandGuide;
   market: string;
   brandMessage: string;
+  /**
+   * Set when this is a revision of a prior generation. Real provider folds
+   * quickFix + note into the prompt; mock uses presence to pick a shorter
+   * duration window so revisions feel snappier than first-pass generation.
+   */
+  revision?: {
+    quickFix: string | null;
+    note: string;
+    previousJobId?: string;
+  };
 };
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed";

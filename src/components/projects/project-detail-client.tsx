@@ -28,8 +28,10 @@ export function ProjectDetailClient({
   const jobs = useJobsStore((s) => s.jobs);
   const pollJob = useJobsStore((s) => s.pollJob);
 
-  // Polling: only for generated projects with active jobs.
-  // Effect re-runs only when project id changes (jobIds is stable per session).
+  // Polling: only for generated projects with active jobs. Depending on
+  // `generated` (full ref) re-fires the effect when revision submits replace
+  // a jobId — old interval is cleaned up, new interval picks up the new id.
+  // jobs slice updates do NOT change generated's reference (separate slice).
   useEffect(() => {
     if (!generated) return;
     const ids = Object.values(generated.jobIds).filter(Boolean) as string[];
@@ -57,8 +59,7 @@ export function ProjectDetailClient({
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generated?.id, pollJob]);
+  }, [generated, pollJob]);
 
   const data = useMemo(() => {
     if (generated) {
@@ -104,7 +105,11 @@ export function ProjectDetailClient({
   return (
     <>
       <ProjectHeader name={data.name} status={data.status} />
-      <ReviewBoard assetTypes={data.assetTypes} views={data.views} />
+      <ReviewBoard
+        assetTypes={data.assetTypes}
+        views={data.views}
+        projectId={generated ? projectId : null}
+      />
     </>
   );
 }

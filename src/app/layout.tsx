@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, Inter, Fraunces, JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { TopNav } from "@/components/layout/top-nav";
+import { StoreRehydrate } from "@/components/store-rehydrate";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -81,6 +82,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body>
+        <StoreRehydrate />
         <TopNav />
         {children}
       </body>

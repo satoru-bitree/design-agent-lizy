@@ -8,7 +8,7 @@ import { ShortVideoCard } from "@/components/projects/short-video-card";
 import { AssetEditDialog } from "@/components/projects/asset-edit-dialog";
 import { ImageLightbox } from "@/components/projects/image-lightbox";
 import type { AssetType } from "@/lib/mock-data";
-import type { AssetView } from "@/lib/stores/jobs-store";
+import { useJobsStore, type AssetView } from "@/lib/stores/jobs-store";
 
 type Editing = { kind: AssetType; image: string; alt: string };
 type Lightbox = { src: string; alt: string; caption?: string };
@@ -22,9 +22,12 @@ const VALID_KINDS: readonly AssetType[] = [
 export type ReviewBoardProps = {
   assetTypes: AssetType[];
   views: Record<AssetType, AssetView>;
+  /** Generated project id. null for legacy fixture projects (revision disabled). */
+  projectId: string | null;
 };
 
-export function ReviewBoard({ assetTypes, views }: ReviewBoardProps) {
+export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) {
+  const submitRevision = useJobsStore((s) => s.submitRevision);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [lightbox, setLightbox] = useState<Lightbox | null>(null);
   const params = useSearchParams();
@@ -97,6 +100,15 @@ export function ReviewBoard({ assetTypes, views }: ReviewBoardProps) {
         kind={editing?.kind ?? "style_shot"}
         currentImageUrl={editing?.image ?? ""}
         currentImageAlt={editing?.alt}
+        onSubmit={({ quickFix, note }) => {
+          if (!projectId || !editing) return;
+          void submitRevision({
+            projectId,
+            kind: editing.kind,
+            quickFix,
+            note,
+          });
+        }}
       />
 
       <ImageLightbox
