@@ -54,24 +54,23 @@ const FAL_JOB_PREFIX = "fal__";
 // looking up `modelForKind(kind)` as a fallback in poll.
 const jobModel = new Map<string, string>();
 
-// Placeholder for the concept slot when the job has no concept (non-short_video
-// kinds, or short_video without an explicit selection). Picked because it's a
-// single character that can't collide with a valid ShortVideoConcept id.
-const NO_CONCEPT_SLOT = "_";
-
 function makeJobId(
   kind: JobKind,
   startedAt: number,
   requestId: string,
   concept?: ShortVideoConcept,
 ): string {
-  // Embed startedAt so progress estimation survives a server restart / cold
-  // start. Embed concept too so the result-label path doesn't depend on an
-  // in-memory map (which would be wiped on Next.js hot reload or any second
-  // process behind a load balancer). Concept ids contain only single
-  // underscores, never the `__` delimiter, so splitting is unambiguous.
-  const conceptSlot = concept ?? NO_CONCEPT_SLOT;
-  return `${FAL_JOB_PREFIX}${kind}__${startedAt}__${conceptSlot}__${requestId}`;
+  // Embed startedAt so progress estimation survives server restart / cold
+  // start. Embed concept for short_video so the result-label path doesn't
+  // depend on an in-memory map. For kinds without a concept (package,
+  // style_shot), stay on the legacy 3-segment format — earlier attempt to
+  // unify with a `_` placeholder broke parsing because the placeholder's
+  // single underscore collided with the `__` segment delimiter, producing
+  // garbled requestIds that fal then returned 404 for.
+  if (concept) {
+    return `${FAL_JOB_PREFIX}${kind}__${startedAt}__${concept}__${requestId}`;
+  }
+  return `${FAL_JOB_PREFIX}${kind}__${startedAt}__${requestId}`;
 }
 
 function parseJobId(
@@ -84,10 +83,12 @@ function parseJobId(
 } | null {
   if (!jobId.startsWith(FAL_JOB_PREFIX)) return null;
   const rest = jobId.slice(FAL_JOB_PREFIX.length);
-  // kind__startedAt__concept__requestId (new format)
-  // OR kind__startedAt__requestId (legacy, in-flight jobs from before concept
-  // was embedded). Detect by whether the segment after startedAt looks like a
-  // concept id (or the placeholder) vs a fal request_id (UUID-style).
+  // Two formats supported:
+  //   - kind__startedAt__concept__requestId  (short_video with concept)
+  //   - kind__startedAt__requestId           (package, style_shot, or
+  //                                           short_video without concept)
+  // Tell them apart by whether the segment after startedAt is a known
+  // ShortVideoConcept id (which never contains `__`).
   const a = rest.indexOf("__");
   if (a < 0) return null;
   const kind = rest.slice(0, a) as JobKind;
@@ -102,25 +103,23 @@ function parseJobId(
   let concept: ShortVideoConcept | undefined;
   let requestId: string;
   const c = afterTs.indexOf("__");
-  if (c < 0) {
-    // Legacy format — no concept slot.
-    requestId = afterTs;
-  } else {
+  if (c > 0) {
     const conceptSlot = afterTs.slice(0, c);
-    const isPlaceholder = conceptSlot === NO_CONCEPT_SLOT;
     const isKnownConcept = SHORT_VIDEO_CONCEPTS.some(
       (sc) => sc.id === conceptSlot,
     );
-    if (isPlaceholder || isKnownConcept) {
-      // New format with explicit concept slot.
-      if (isKnownConcept) concept = conceptSlot as ShortVideoConcept;
+    if (isKnownConcept) {
+      concept = conceptSlot as ShortVideoConcept;
       requestId = afterTs.slice(c + 2);
     } else {
-      // Looked like new format but the "concept" segment is unrecognized — fall
-      // back to treating the whole tail as legacy requestId so a stray `__` in
-      // a future fal request_id doesn't blow up parsing.
+      // First segment isn't a known concept id — treat the whole tail as the
+      // requestId (legacy 3-segment format, or a fal request_id that happens
+      // to contain `__`).
       requestId = afterTs;
     }
+  } else {
+    // No `__` after startedAt — entire tail is the requestId (legacy format).
+    requestId = afterTs;
   }
 
   if (!requestId) return null;
