@@ -3,6 +3,13 @@ import { Film, Play } from "lucide-react";
 import { AssetResultCard } from "@/components/projects/asset-result-card";
 import type { AssetView } from "@/lib/stores/jobs-store";
 
+// Real provider returns mp4 (seedance); mock returns a picsum still. Pick the
+// element on URL extension — keeps the card backwards-compatible with mock
+// runs and dev fixtures.
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url);
+}
+
 export function ShortVideoCard({
   view,
   onRequestRevision,
@@ -27,40 +34,57 @@ function Body({ view }: { view: AssetView }) {
     const variant = view.variants[0];
     if (!variant) return null;
     const meta = variant.meta ?? {};
+    const isVideo = isVideoUrl(variant.url);
     return (
       <div className="flex flex-col items-center gap-4">
         <div className="relative aspect-[9/16] w-[200px] rounded-[24px] bg-[#0A0A0A] p-2 shadow-soft">
           <div className="relative h-full w-full overflow-hidden rounded-[18px] bg-surface-3">
-            <Image
-              src={variant.url}
-              alt={variant.label ?? "short video preview"}
-              fill
-              sizes="200px"
-              className="object-cover"
-            />
-            <button
-              type="button"
-              aria-label="재생"
-              className="absolute inset-0 m-auto flex h-14 w-14 items-center justify-center rounded-pill bg-mint text-bg shadow-fab transition-transform duration-micro ease-lz hover:scale-105"
-            >
-              <Play
-                className="h-5 w-5 translate-x-[2px]"
-                fill="currentColor"
-                strokeWidth={0}
+            {isVideo ? (
+              <video
+                src={variant.url}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                className="absolute inset-0 h-full w-full object-cover"
+                aria-label={variant.label ?? "short video preview"}
               />
-            </button>
-            <div className="absolute bottom-3 left-3 right-3 h-px overflow-hidden bg-white/20">
-              <div className="h-full w-[30%] bg-mint" />
-            </div>
+            ) : (
+              <>
+                <Image
+                  src={variant.url}
+                  alt={variant.label ?? "short video preview"}
+                  fill
+                  sizes="200px"
+                  className="object-cover"
+                />
+                <button
+                  type="button"
+                  aria-label="재생"
+                  className="absolute inset-0 m-auto flex h-14 w-14 items-center justify-center rounded-pill bg-mint text-bg shadow-fab transition-transform duration-micro ease-lz hover:scale-105"
+                >
+                  <Play
+                    className="h-5 w-5 translate-x-[2px]"
+                    fill="currentColor"
+                    strokeWidth={0}
+                  />
+                </button>
+                <div className="absolute bottom-3 left-3 right-3 h-px overflow-hidden bg-white/20">
+                  <div className="h-full w-[30%] bg-mint" />
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-center gap-1">
           <p className="font-kr text-[14px] font-semibold text-fg">
-            {meta.platforms ?? "틱톡 / 릴스 / 쇼츠"}
+            {meta.concept ?? meta.platforms ?? variant.label ?? "숏폼 영상"}
           </p>
           <p className="font-mono text-[11px] text-fg-muted">
-            {meta.ratio ?? "9:16"} · {meta.duration ?? "30s"} ·{" "}
-            {meta.export ?? "4K Export"}
+            {[meta.ratio, meta.duration, meta.resolution ?? meta.export]
+              .filter((s): s is string => !!s)
+              .join(" · ")}
           </p>
         </div>
       </div>

@@ -8,6 +8,12 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import type { AssetType } from "@/lib/mock-data";
 
+// short_video variants from the real provider are .mp4 URLs that can't be
+// painted by next/image. Detect them so the preview switches to <video>.
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url);
+}
+
 const QUICK_FIXES = [
   "더 밝은 톤",
   "채도 ↑",
@@ -97,7 +103,11 @@ export function AssetEditDialog({
 
   const selected =
     variants.find((v) => v.id === selectedVariantId) ?? variants[0];
-  const isImageLoading = !!selected && loadedUrl !== selected.url;
+  const isVideoSelected = !!selected && isVideoUrl(selected.url);
+  // Loading skeleton is only for the next/image path — <video> handles its own
+  // black-canvas-until-ready state, so skip the overlay when video.
+  const isImageLoading =
+    !!selected && !isVideoSelected && loadedUrl !== selected.url;
 
   // Block submit when both fields are empty — otherwise we'd kick off a
   // generation with no actual revision instructions, which just regenerates
@@ -188,31 +198,51 @@ export function AssetEditDialog({
                 </div>
               )}
 
-              <div className="relative aspect-square overflow-hidden rounded-lg bg-surface-2">
-                {selected?.url ? (
-                  <Image
-                    // Remount on URL change so the previous image is removed
-                    // immediately, instead of lingering until the next image
-                    // finishes downloading.
-                    key={selected.url}
-                    src={selected.url}
-                    alt={selected.label ?? `${title} 베이스 컷`}
-                    fill
-                    sizes="(min-width: 1024px) 416px, 50vw"
-                    className={cn(
-                      "object-cover transition-opacity duration-base ease-lz",
-                      isImageLoading ? "opacity-0" : "opacity-100",
-                    )}
-                    onLoad={() => setLoadedUrl(selected.url)}
-                  />
-                ) : null}
-                {isImageLoading && (
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 animate-pulse bg-surface-2"
-                  />
-                )}
-              </div>
+              {isVideoSelected ? (
+                // 9:16 vertical frame, narrower than aspect-square so the modal
+                // height stays in range. Centered in the column.
+                <div className="relative mx-auto aspect-[9/16] w-[260px] overflow-hidden rounded-lg bg-surface-2">
+                  {selected?.url ? (
+                    <video
+                      key={selected.url}
+                      src={selected.url}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      preload="metadata"
+                      className="absolute inset-0 h-full w-full object-cover"
+                      aria-label={selected.label ?? `${title} 베이스 컷`}
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <div className="relative aspect-square overflow-hidden rounded-lg bg-surface-2">
+                  {selected?.url ? (
+                    <Image
+                      // Remount on URL change so the previous image is removed
+                      // immediately, instead of lingering until the next image
+                      // finishes downloading.
+                      key={selected.url}
+                      src={selected.url}
+                      alt={selected.label ?? `${title} 베이스 컷`}
+                      fill
+                      sizes="(min-width: 1024px) 416px, 50vw"
+                      className={cn(
+                        "object-cover transition-opacity duration-base ease-lz",
+                        isImageLoading ? "opacity-0" : "opacity-100",
+                      )}
+                      onLoad={() => setLoadedUrl(selected.url)}
+                    />
+                  ) : null}
+                  {isImageLoading && (
+                    <div
+                      aria-hidden
+                      className="absolute inset-0 animate-pulse bg-surface-2"
+                    />
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Request form — quick fixes + free-text note. */}

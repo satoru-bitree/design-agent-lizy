@@ -7,6 +7,7 @@ import type {
   GenerationInput,
   Job,
   JobVariant,
+  ShortVideoSettings,
   StyleShotSettings,
 } from "@/lib/ai/types";
 import { compressImageFile } from "@/lib/image-compress";
@@ -86,6 +87,7 @@ export type GenerationProject = {
    * keep the original creative direction unless the user changes it.
    */
   styleShotSettings?: StyleShotSettings;
+  shortVideoSettings?: ShortVideoSettings;
   /** jobId per asset type. May be missing if the start request itself failed. */
   jobIds: Partial<Record<AssetType, string>>;
   /** Per-asset-type startup error (e.g. POST /api/jobs failed). */
@@ -101,6 +103,7 @@ export type SubmitInput = {
   brandGuide: BrandGuide;
   assetTypes: AssetType[];
   styleShotSettings?: StyleShotSettings;
+  shortVideoSettings?: ShortVideoSettings;
 };
 
 export type SubmitRevisionInput = {
@@ -255,6 +258,7 @@ export const useJobsStore = create<Store>()(
           references: input.references,
           assetTypes: input.assetTypes,
           styleShotSettings: input.styleShotSettings,
+          shortVideoSettings: input.shortVideoSettings,
           jobIds: {},
           startErrors: {},
           createdAt: Date.now(),
@@ -337,6 +341,10 @@ export const useJobsStore = create<Store>()(
                 brandMessage: project.brandMessage,
                 styleShot:
                   kind === "style_shot" ? project.styleShotSettings : undefined,
+                shortVideo:
+                  kind === "short_video"
+                    ? project.shortVideoSettings
+                    : undefined,
                 revision: {
                   quickFix,
                   note,
@@ -521,6 +529,8 @@ async function kickOffKind(
           brandMessage: input.brandMessage,
           styleShot:
             kind === "style_shot" ? input.styleShotSettings : undefined,
+          shortVideo:
+            kind === "short_video" ? input.shortVideoSettings : undefined,
         } satisfies GenerationInput,
       }),
     });

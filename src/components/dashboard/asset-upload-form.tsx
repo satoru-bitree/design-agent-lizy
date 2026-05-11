@@ -8,7 +8,10 @@ import { cn } from "@/lib/utils";
 import type { AssetType } from "@/lib/mock-data";
 import type { BrandState } from "@/lib/stores/jobs-store";
 import {
+  SHORT_VIDEO_CONCEPTS,
   STYLE_SHOT_PRESETS,
+  type ShortVideoConcept,
+  type ShortVideoSettings,
   type StyleShotPreset,
   type StyleShotSettings,
 } from "@/lib/ai/types";
@@ -41,8 +44,9 @@ export type SubmitData = {
   market: string;
   assetTypes: AssetType[];
   brandMessage: string;
-  /** Optional per-asset-type instructions. Only style_shot is wired today. */
+  /** Optional per-asset-type instructions. */
   styleShotSettings?: StyleShotSettings;
+  shortVideoSettings?: ShortVideoSettings;
 };
 
 export type AssetUploadFormProps = {
@@ -70,6 +74,10 @@ export function AssetUploadForm({
     StyleShotPreset | null
   >(null);
   const [styleShotRequest, setStyleShotRequest] = useState("");
+  const [shortVideoConcept, setShortVideoConcept] = useState<
+    ShortVideoConcept | null
+  >(null);
+  const [shortVideoRequest, setShortVideoRequest] = useState("");
 
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) setFile(accepted[0]);
@@ -110,20 +118,22 @@ export function AssetUploadForm({
     });
   };
 
-  // Validation precedence: submitting → file → types → brand state
+  // Validation precedence: submitting → file → types → short_video concept → brand state
   const disabledReason = submitting
     ? null
     : !file
       ? "제품 이미지를 업로드하면 다음 단계로 진행됩니다."
       : assetTypes.size === 0
         ? "에셋 유형을 1개 이상 선택해주세요."
-        : brandStatus === "idle"
-          ? "먼저 브랜드 가이드를 적용하면 시장에 맞춘 결과물을 받을 수 있습니다."
-          : brandStatus === "analyzing"
-            ? "브랜드 분석이 끝나면 활성화됩니다."
-            : brandStatus === "error"
-              ? "브랜드 분석에 실패했습니다. 다시 업로드해주세요."
-              : null;
+        : assetTypes.has("short_video") && shortVideoConcept === null
+          ? "숏폼 영상 컨셉을 선택해주세요."
+          : brandStatus === "idle"
+            ? "먼저 브랜드 가이드를 적용하면 시장에 맞춘 결과물을 받을 수 있습니다."
+            : brandStatus === "analyzing"
+              ? "브랜드 분석이 끝나면 활성화됩니다."
+              : brandStatus === "error"
+                ? "브랜드 분석에 실패했습니다. 다시 업로드해주세요."
+                : null;
 
   const canSubmit = !disabledReason && !submitting;
 
@@ -150,6 +160,19 @@ export function AssetUploadForm({
             }),
           }
         : undefined;
+    // short_video: concept is required when short_video is in assetTypes (the
+    // `disabledReason` guard above prevents reaching here otherwise). Additional
+    // request stays optional.
+    const trimmedVideoRequest = shortVideoRequest.trim();
+    const shortVideoSettings: ShortVideoSettings | undefined =
+      assetTypes.has("short_video") && shortVideoConcept !== null
+        ? {
+            concept: shortVideoConcept,
+            ...(trimmedVideoRequest.length > 0 && {
+              additionalRequest: trimmedVideoRequest,
+            }),
+          }
+        : undefined;
     onSubmit?.({
       file,
       referenceFiles:
@@ -158,6 +181,7 @@ export function AssetUploadForm({
       assetTypes: ASSET_TYPE_ORDER.filter((t) => assetTypes.has(t)),
       brandMessage: message,
       styleShotSettings,
+      shortVideoSettings,
     });
   };
 
@@ -358,6 +382,61 @@ export function AssetUploadForm({
                 rows={2}
                 maxLength={200}
                 placeholder="예: 따뜻한 골든아워 조명, 우드톤 배경"
+                className="w-full resize-none rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
+              />
+            </Field>
+          </>
+        )}
+
+        {/* Short video options — only when short_video is selected. Lets users
+            choose the clip's storytelling angle (concept) and layer free-text
+            on top. Both optional; absent state lets the model pick. */}
+        {assetTypes.has("short_video") && (
+          <>
+            <Field label="숏폼 영상 컨셉 (필수)">
+              <div
+                role="group"
+                aria-label="숏폼 영상 컨셉"
+                className="flex flex-wrap gap-2 pt-1"
+              >
+                {SHORT_VIDEO_CONCEPTS.map((c) => (
+                  <Pill
+                    key={c.id}
+                    active={shortVideoConcept === c.id}
+                    onClick={() =>
+                      setShortVideoConcept((cur) =>
+                        cur === c.id ? null : c.id,
+                      )
+                    }
+                    title={c.description}
+                  >
+                    {c.label}
+                  </Pill>
+                ))}
+              </div>
+              {shortVideoConcept && (
+                <span className="font-kr text-meta text-fg-muted">
+                  {
+                    SHORT_VIDEO_CONCEPTS.find((c) => c.id === shortVideoConcept)
+                      ?.description
+                  }
+                </span>
+              )}
+            </Field>
+
+            <Field
+              label="숏폼 영상 추가 요청사항 (선택)"
+              htmlFor="short-video-request"
+            >
+              <textarea
+                id="short-video-request"
+                value={shortVideoRequest}
+                onChange={(e) =>
+                  setShortVideoRequest(e.target.value.slice(0, 200))
+                }
+                rows={2}
+                maxLength={200}
+                placeholder="예: 라면에 양념 뿌리는 모습, 책상 위 사용 장면"
                 className="w-full resize-none rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
               />
             </Field>

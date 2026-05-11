@@ -53,6 +53,7 @@ export function DashboardClient() {
         brandGuide: brand.result.brandGuide,
         assetTypes: data.assetTypes,
         styleShotSettings: data.styleShotSettings,
+        shortVideoSettings: data.shortVideoSettings,
       });
       router.push(`/projects/${projectId}`);
     } catch {

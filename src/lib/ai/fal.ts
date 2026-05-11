@@ -3,8 +3,8 @@
 // Currently wired:
 //   - package (label) → openai/gpt-image-2/edit
 //   - style_shot      → openai/gpt-image-2/edit
-//   - short_video     → mock (TODO)
-//   - extractBrandGuide → mock (TODO)
+//   - short_video     → bytedance/seedance-2.0/image-to-video
+//   - extractBrandGuide → nvidia/nemotron-3-nano-omni/vision
 //
 // Job tracking: fal.queue.submit returns request_id; we encode kind+model+request_id
 // in our own jobId so getJob can poll via fal.queue.status / .result.
@@ -15,12 +15,14 @@ import { mockProvider } from "./mock";
 import type { AIProvider } from "./provider";
 import {
   AIError,
+  SHORT_VIDEO_CONCEPTS,
   type BrandExtractionInput,
   type BrandExtractionResult,
   type GenerationInput,
   type Job,
   type JobKind,
   type JobVariant,
+  type ShortVideoConcept,
   type StyleShotPreset,
 } from "./types";
 
@@ -52,35 +54,77 @@ const FAL_JOB_PREFIX = "fal__";
 // looking up `modelForKind(kind)` as a fallback in poll.
 const jobModel = new Map<string, string>();
 
+// Placeholder for the concept slot when the job has no concept (non-short_video
+// kinds, or short_video without an explicit selection). Picked because it's a
+// single character that can't collide with a valid ShortVideoConcept id.
+const NO_CONCEPT_SLOT = "_";
+
 function makeJobId(
   kind: JobKind,
   startedAt: number,
   requestId: string,
+  concept?: ShortVideoConcept,
 ): string {
   // Embed startedAt so progress estimation survives a server restart / cold
-  // start. Without this, jobMeta misses cause progress to reset to 0 every
-  // poll because `Date.now()` is used as the fallback startedAt.
-  return `${FAL_JOB_PREFIX}${kind}__${startedAt}__${requestId}`;
+  // start. Embed concept too so the result-label path doesn't depend on an
+  // in-memory map (which would be wiped on Next.js hot reload or any second
+  // process behind a load balancer). Concept ids contain only single
+  // underscores, never the `__` delimiter, so splitting is unambiguous.
+  const conceptSlot = concept ?? NO_CONCEPT_SLOT;
+  return `${FAL_JOB_PREFIX}${kind}__${startedAt}__${conceptSlot}__${requestId}`;
 }
 
 function parseJobId(
   jobId: string,
-): { kind: JobKind; startedAt: number; requestId: string } | null {
+): {
+  kind: JobKind;
+  startedAt: number;
+  concept?: ShortVideoConcept;
+  requestId: string;
+} | null {
   if (!jobId.startsWith(FAL_JOB_PREFIX)) return null;
   const rest = jobId.slice(FAL_JOB_PREFIX.length);
-  // kind__startedAt__requestId — requestId itself may contain dashes/letters
-  // but never `__`, so we split on the first two occurrences.
+  // kind__startedAt__concept__requestId (new format)
+  // OR kind__startedAt__requestId (legacy, in-flight jobs from before concept
+  // was embedded). Detect by whether the segment after startedAt looks like a
+  // concept id (or the placeholder) vs a fal request_id (UUID-style).
   const a = rest.indexOf("__");
   if (a < 0) return null;
   const kind = rest.slice(0, a) as JobKind;
   if (!["package", "style_shot", "short_video"].includes(kind)) return null;
-  const remainder = rest.slice(a + 2);
-  const b = remainder.indexOf("__");
+  const afterKind = rest.slice(a + 2);
+  const b = afterKind.indexOf("__");
   if (b < 0) return null;
-  const startedAt = Number(remainder.slice(0, b));
-  const requestId = remainder.slice(b + 2);
-  if (!Number.isFinite(startedAt) || !requestId) return null;
-  return { kind, startedAt, requestId };
+  const startedAt = Number(afterKind.slice(0, b));
+  if (!Number.isFinite(startedAt)) return null;
+  const afterTs = afterKind.slice(b + 2);
+
+  let concept: ShortVideoConcept | undefined;
+  let requestId: string;
+  const c = afterTs.indexOf("__");
+  if (c < 0) {
+    // Legacy format — no concept slot.
+    requestId = afterTs;
+  } else {
+    const conceptSlot = afterTs.slice(0, c);
+    const isPlaceholder = conceptSlot === NO_CONCEPT_SLOT;
+    const isKnownConcept = SHORT_VIDEO_CONCEPTS.some(
+      (sc) => sc.id === conceptSlot,
+    );
+    if (isPlaceholder || isKnownConcept) {
+      // New format with explicit concept slot.
+      if (isKnownConcept) concept = conceptSlot as ShortVideoConcept;
+      requestId = afterTs.slice(c + 2);
+    } else {
+      // Looked like new format but the "concept" segment is unrecognized — fall
+      // back to treating the whole tail as legacy requestId so a stray `__` in
+      // a future fal request_id doesn't blow up parsing.
+      requestId = afterTs;
+    }
+  }
+
+  if (!requestId) return null;
+  return { kind, startedAt, concept, requestId };
 }
 
 async function uploadDataUrl(dataUrl: string, fileName: string): Promise<string> {
@@ -302,6 +346,128 @@ function buildStyleShotPrompt(
   return lines.filter((l): l is string => l !== null).join("\n");
 }
 
+function buildShortVideoPrompt(
+  input: GenerationInput,
+  opts: {
+    productInfo?: ProductInfo;
+    concept?: ShortVideoConcept;
+    additionalRequest?: string;
+  } = {},
+): string {
+  const { brandGuide: g, market, brandMessage, revision } = input;
+  const palette = g.palette
+    .map((p) => `${p.hex}${p.name ? ` (${p.name})` : ""}`)
+    .join(", ");
+  const brand = g.brandName ?? g.logoWordmark?.text ?? "BRAND";
+  const category = (opts.productInfo?.category ?? "").trim();
+  // Concept is now mandatory at the UI layer. Fallback to cinematic_mood
+  // covers any legacy callsite (e.g. revision of a project saved before this
+  // change) — it's the most class-agnostic of the remaining concepts.
+  const concept: ShortVideoConcept = opts.concept ?? "cinematic_mood";
+  const conceptMeta = SHORT_VIDEO_CONCEPTS.find((c) => c.id === concept);
+  const additional = (opts.additionalRequest ?? "").trim();
+
+  const lines: (string | null)[] = [
+    `9:16 vertical short-form clip starring the product. Preserve product identity, label, container, colors, proportions EXACTLY across every frame — never morph, replace, swap, or duplicate.`,
+    `Concept: ${conceptMeta?.label ?? "시네마틱 무드"} — ${conceptMeta?.description ?? "minimal cinematic hero shot"}.`,
+    category ? `Category hint: ${category}.` : null,
+    `Silently identify class (food/beverage/cosmetic/cleaning/electronics/toy/apparel/stationery/tool/other); adapt scene to it. Never default to a kitchen for non-food.`,
+    "",
+    ...directionForConcept(concept),
+    "",
+    `Camera locked, mostly stable. Shallow DoF, product sharp, background creamy.`,
+    `Brand: ${brand} · market ${market}. Palette (${palette}) applied as ambient tones, NEVER on the product itself.`,
+    g.moodCaption ? `Mood: ${g.moodCaption}.` : null,
+    brandMessage ? `Brand message: "${brandMessage}".` : null,
+    additional ? `User direction: ${additional}.` : null,
+    "",
+    `Output: 9:16 vertical, 720p, 5s, premium product-advertising aesthetic. Product stays comfortably in frame.`,
+    `No watermarks, no overlay text, no on-screen captions. No surreal artifacts, no extra duplicates, no morphing.`,
+    revision?.note ? `Revision request: ${revision.note}.` : null,
+    revision?.quickFix ? `Quick fix: ${revision.quickFix}.` : null,
+  ];
+
+  return lines.filter((l): l is string => l !== null).join("\n");
+}
+
+/**
+ * STEP 2 block for the short-video prompt — varies per concept. Returns an
+ * array of strings ready to splice into the prompt body.
+ *
+ * Each concept gives the model a different center of gravity: usage gesture,
+ * finished result, micro-process, kinetic ingredient drop, or pure cinematic
+ * atmosphere.
+ */
+function directionForConcept(concept: ShortVideoConcept): string[] {
+  switch (concept) {
+    case "usage_guide":
+      return [
+        `Usage demonstration: a pair of hands (only hands — NO faces, NO bodies) performs ONE realistic primary usage gesture for this product in 5 seconds. The target/setting must MATCH the product's class and feel like a real owner's moment of use — never blank, never empty, never food-themed for non-food, never non-food for food.`,
+        `Class anchors: (A) drizzle/spoon onto a plated dish; (B) prepare/serve with cookware (cup-noodle pour, plate steaming food); (C) pour into garnished glass or load brewer (beans→grinder, drip→mug, capsule→machine, stick→hot water); (D) apply to wrist/skin with vanity props; (E) spray/wipe a visibly soiled surface; (F) use on a desk with monitor/keyboard/cables — never in a kitchen; (G) hold/pose on a play surface with class-appropriate context — never in a kitchen; (H) worn on hand/wrist or laid out on fabric/leather — never on food; (I) at a desk with paper/notebook/book — never in a kitchen; (J) used on its actual target object — never on a plate; (K) match what is literally in the starting frame.`,
+        `Hands look natural and anatomical. The product remains the visual hero — hands serve it, never compete. If class is uncertain, do NOT default to a kitchen scene.`,
+      ];
+    case "recipe":
+      return [
+        `Finished result: show a fully-styled outcome that this product produced or enabled, with the product visible alongside the result. NO mid-process shots, NO raw ingredients on screen — the moment looks fully complete.`,
+        `Class anchors: (A/B) plated finished dish with the product bottle/jar/pack beside it; (C) finished drink garnished (latte art / foam / ice / lemon) with the product alongside; (D) styled cosmetic result on hand/wrist (glowing skin, swatch, polished nail) with the product alongside; (E) visibly clean surface with the product alongside; (F) live desk scene — monitor aglow, cursor moving — with the product in place; (G) the finished assembled/built form of the toy; (H) apparel worn or styled on fabric/leather — never on food; (I) finished page/open book/styled workspace; (J) the tool's completed work beside the tool; (K) match what is literally in the starting frame.`,
+        `Camera slowly pushes in or pulls back to reveal both product and result. Hands optional — only serving the reveal, never competing.`,
+      ];
+    case "cooking_process":
+      return [
+        `Process beat: a tight 2-beat micro-story in 5 seconds — Beat 1 setup/raw, Beat 2 product is added/applied/placed/triggered, implied result by the end. Smooth continuous camera links the beats — never a hard cut.`,
+        `Class anchors: (A/B) raw dish → drizzle/spoon product → finished bite; (C) empty glass with ice → pour/load product → finished drink with foam/garnish; (D) bare skin → dab/pump product → glow; (E) soiled surface → spray/wipe → clean; (F) bare desk → place/plug/click product → desk lights up; (G) parts spread → key piece placed → assembled; (H) folded apparel → wear/open → styled outcome; (I) blank page → bring pen/book → first line written; (J) raw target → tool used → completed work; (K) follow the starting frame's setting.`,
+        `Product is visible at the transition, anchoring both beats. Hands optional (only hands, no faces).`,
+      ];
+    case "kinetic_food":
+      return [
+        `STEP 2 — KINETIC FOOD PROMOTION (stop-motion-style ingredient dynamics around the product):`,
+        `Create a high-energy commercial-style clip where ingredients explode, fall, splash, and orbit around the product in a stop-motion-feel burst — the classic premium food-advertising aesthetic that visualizes flavor power. Think soy sauce commercials, hot sauce ads, beverage launch reels: the product is rock-stable while a choreographed cloud of ingredients flies around it.`,
+        `This concept is engineered for FOOD and BEVERAGE classes (A / B / C). If the product is non-food, gracefully degrade toward a cinematic hero shot with brand-palette particles or category-appropriate elements instead of literal ingredients — never invent food around a non-food product.`,
+        "",
+        `DIRECTION:`,
+        `- The product is the steady visual anchor — sits centered or slightly off-center, ROCK STABLE in every frame. Everything else moves around it.`,
+        `- A choreographed burst of ingredients caught mid-air around the product. Mix motions: some falling from above, some splashing, some orbiting, some bursting outward as if energy radiates from the product itself.`,
+        `- Stop-motion / freeze-frame feel: ingredients look sharply frozen, with subtle motion blur trailing them. The overall composition has continuous flow — not a static collage.`,
+        `- Camera holds steady or performs a very slow push-in toward the product. No pans, no shake.`,
+        `- Lighting: high-key commercial advertising light with deliberate rim light + dramatic directional shadows. Color grade saturated and food-photography-rich.`,
+        `- BACKGROUND must match the product's actual category — do NOT keep a blank/white packshot background, and do NOT default to a generic gradient. Pick a real, brand-aligned environment from frame 1:`,
+        `    · sauces / oils / pastes / seasonings → a warm kitchen counter (wood or marble surface, fresh herbs and ingredients staged nearby, soft window light, hint of kitchenware in soft focus behind).`,
+        `    · ready-to-cook / snack / instant food → a kitchen counter or dining surface with serving cookware cues (steaming pot, plated portion, chopsticks).`,
+        `    · beverages / coffee / tea / RTD → a cafe table, bar top, or dining surface with garnish-relevant props (ice, citrus, glassware, foam, brewing setup) and a sunlit window in soft focus.`,
+        `    · for non-food fallback → match the product's natural use context (vanity / desk / studio surface).`,
+        `Background stays in shallow depth of field so it never competes with the product, but it must read as a real place where this product naturally lives.`,
+        `- NO hands, NO faces. Pure product hero with ingredient choreography around it.`,
+        "",
+        `THE INGREDIENTS MUST MATCH WHAT THE PRODUCT ACTUALLY IS (read it from the starting frame + category hint):`,
+        `    · soy sauce / fish sauce → flying garlic cloves, sliced ginger, dried red pepper, splashes of dark sauce arcing through air, sesame seeds.`,
+        `    · sesame oil → sesame seeds streaming, golden oil drops, herb leaves.`,
+        `    · gochujang / hot sauce → flying red chili peppers, splashed red sauce arcs, garlic, sesame.`,
+        `    · ssamjang / doenjang → soybeans, garlic cloves, splashes of paste, green onion.`,
+        `    · cooking oil → herb leaves, garlic, dried spice, droplets.`,
+        `    · coffee → coffee beans flying, milk splash arcs, cocoa or cinnamon dust, steam.`,
+        `    · tea → tea leaves, water droplets, citrus slices, fresh herbs.`,
+        `    · seasoning powder / spice → corresponding herb/spice + the dish ingredients it would land on, mid-flight.`,
+        `    · snack / instant food → the literal ingredients of that snack (chips → potato slices + salt; ramyeon → noodles + green onion + chili; cookies → flour dust + chocolate chunks).`,
+        `    · RTD beverage / juice → corresponding fruits, ice cubes, splashes of the drink itself.`,
+        `    · beer → wheat stalks, hops, foam splash, water droplets.`,
+        `    · wine / spirits → grapes, cork, dark splash arcs.`,
+        `If the exact category isn't clear, pick the 2-3 most stereotype-defining ingredients for the closest class and commit to those — don't mix unrelated ingredients.`,
+        "",
+        `HARD RULES:`,
+        `- The product remains photo-realistically static and identifiable. The label MUST NEVER morph, transform, or be obscured by ingredients.`,
+        `- Ingredients NEVER cross over or block the product label.`,
+        `- No flying brand logos, no extra duplicates of the product, no flying packaging.`,
+        `- Motion blur on ingredients is welcome; the product itself stays tack-sharp.`,
+      ];
+    case "cinematic_mood":
+      return [
+        `Cinematic hero shot — pure product film (Aesop / Apple / Hermès style). NO humans, NO hands, NO faces, NO bodies. Movement comes ONLY from the camera and atmospheric elements.`,
+        `Camera: pick ONE — slow push-in, soft 30° orbit, or quiet vertical parallax. Gentle and continuous, never abrupt.`,
+        `Atmosphere: drifting sun rays, soft bokeh, gentle particle drift, faint steam or refractive light catches — match the product's material. Single-source cinematic light grade. Setting: a styled minimal surface (wood / marble / linen / paper) aligned with the product's aesthetic. Negative space welcome.`,
+      ];
+  }
+}
+
 class FalProvider implements AIProvider {
   async extractBrandGuide(
     input: BrandExtractionInput,
@@ -369,6 +535,9 @@ class FalProvider implements AIProvider {
     if (kind === "style_shot") {
       return this.startStyleShot(input);
     }
+    if (kind === "short_video") {
+      return this.startShortVideo(input);
+    }
     return mockProvider.startGeneration(kind, input);
   }
 
@@ -414,7 +583,9 @@ class FalProvider implements AIProvider {
         const result = await fal.queue.result(model, {
           requestId: parsed.requestId,
         });
-        const variants = parseVariants(parsed.kind, result.data);
+        const variants = parseVariants(parsed.kind, result.data, {
+          concept: parsed.concept,
+        });
         return {
           id: jobId,
           kind: parsed.kind,
@@ -535,6 +706,83 @@ class FalProvider implements AIProvider {
     };
   }
 
+  private async startShortVideo(
+    input: GenerationInput,
+  ): Promise<{
+    jobId: string;
+    uploads?: { product?: string; reference?: string };
+  }> {
+    // Resolve product image — same pattern as startStyleShot. The product still
+    // is the seedance starting frame; everything else is generated motion.
+    let productUrl: string;
+    if (input.productImageRemoteUrl?.startsWith("https://")) {
+      productUrl = input.productImageRemoteUrl;
+    } else if (input.productImageDataUrl) {
+      productUrl = await uploadDataUrl(
+        input.productImageDataUrl,
+        "product.png",
+      );
+    } else {
+      throw new AIError(
+        "INVALID_INPUT",
+        "제품 이미지가 비어있습니다. 페이지를 새로고침하셨다면 대시보드에서 다시 업로드해주세요.",
+      );
+    }
+
+    // Best-effort product classification — gives the motion-direction prompt
+    // an explicit category anchor (so "cap turning open" is dropped for, say, a
+    // model kit, and the model picks a sensible gesture instead). Failure is
+    // non-fatal: describeProduct returns empty strings on error.
+    const productInfo = await describeProduct(productUrl);
+    console.log(
+      "[fal] short_video productInfo:",
+      productInfo.hint ? productInfo.hint : "(empty)",
+    );
+
+    // Normalize incoming concept against the current preset list. Persisted
+    // projects from earlier dev sessions may carry a deprecated id (e.g.
+    // "ai_recommended" or "brand_story" which we've since removed). Map
+    // anything unknown to "cinematic_mood" — the safest class-agnostic
+    // concept — so the prompt and meta-label paths can't crash.
+    const requestedConcept = input.shortVideo?.concept;
+    const concept: ShortVideoConcept =
+      requestedConcept &&
+      SHORT_VIDEO_CONCEPTS.some((c) => c.id === requestedConcept)
+        ? requestedConcept
+        : "cinematic_mood";
+    const additionalRequest = input.shortVideo?.additionalRequest;
+    const prompt = buildShortVideoPrompt(input, {
+      productInfo,
+      concept,
+      additionalRequest,
+    });
+    const model = modelForKind("short_video");
+
+    const submitted = await fal.queue.submit(model, {
+      input: {
+        prompt,
+        image_url: productUrl,
+        // Shortform vertical: TikTok / Reels / Shorts.
+        aspect_ratio: "9:16",
+        // 5s — fast feedback loop. Bump to 10s later when we want hero clips.
+        duration: "5",
+        resolution: "720p",
+        // Default is true; muting saves Seedance's audio-gen pass and keeps
+        // the clip silent for SNS overlay work.
+        generate_audio: false,
+      },
+    });
+
+    const requestId = submitted.request_id;
+    const startedAt = Date.now();
+    const jobId = makeJobId("short_video", startedAt, requestId, concept);
+    jobModel.set(jobId, model);
+    return {
+      jobId,
+      uploads: { product: productUrl },
+    };
+  }
+
   private async startPackage(
     input: GenerationInput,
   ): Promise<{
@@ -623,7 +871,11 @@ function modelForKind(kind: JobKind): string {
 type FalImage = { url: string; width?: number; height?: number };
 type FalVideo = { url: string };
 
-function parseVariants(kind: JobKind, data: unknown): JobVariant[] {
+function parseVariants(
+  kind: JobKind,
+  data: unknown,
+  extras: { concept?: ShortVideoConcept } = {},
+): JobVariant[] {
   const d = (data ?? {}) as { images?: FalImage[]; video?: FalVideo };
 
   if (kind === "package") {
@@ -646,14 +898,23 @@ function parseVariants(kind: JobKind, data: unknown): JobVariant[] {
   if (kind === "short_video") {
     const url = d.video?.url;
     if (!url) return [];
+    // Resolve the user-facing concept label from the active preset. Falls back
+    // to the cinematic_mood label for any legacy jobId whose concept slot is
+    // missing or no longer recognized (e.g. deprecated "ai_recommended").
+    const conceptId = extras.concept ?? "cinematic_mood";
+    const conceptLabel =
+      SHORT_VIDEO_CONCEPTS.find((c) => c.id === conceptId)?.label ??
+      "숏폼 영상";
     return [
       {
         id: "video-1",
         url,
         label: "숏폼 영상",
         meta: {
+          concept: conceptLabel,
           ratio: "9:16",
-          export: "fal · seedance-2.0",
+          duration: "5초",
+          resolution: "720p",
         },
       },
     ];

@@ -83,6 +83,55 @@ export type StyleShotSettings = {
   additionalRequest?: string;
 };
 
+/**
+ * Preset choices for short-form video generation. The user MUST pick one;
+ * the provider folds it into the motion-direction prompt.
+ */
+export type ShortVideoConcept =
+  | "usage_guide"
+  | "recipe"
+  | "cooking_process"
+  | "kinetic_food"
+  | "cinematic_mood";
+
+export const SHORT_VIDEO_CONCEPTS: {
+  id: ShortVideoConcept;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "usage_guide",
+    label: "사용 가이드",
+    description: "손이 등장해 제품을 자연스럽게 사용하는 시범",
+  },
+  {
+    id: "recipe",
+    label: "제품 활용 레시피",
+    description: "제품으로 만든 완성 결과물을 보여주는 컷",
+  },
+  {
+    id: "cooking_process",
+    label: "조리 과정",
+    description: "재료 → 제품 → 결과까지 짧은 흐름",
+  },
+  {
+    id: "kinetic_food",
+    label: "키네틱 푸드",
+    description: "식재료가 공중에서 움직이는 스톱모션 광고 컷 (식품·음료 추천)",
+  },
+  {
+    id: "cinematic_mood",
+    label: "시네마틱 무드",
+    description: "인물·동작 없이 카메라·빛만으로 광고 인서트",
+  },
+];
+
+export type ShortVideoSettings = {
+  concept?: ShortVideoConcept;
+  /** Free-text instruction layered on top of the concept (max 200 chars). */
+  additionalRequest?: string;
+};
+
 export type GenerationInput = {
   productImageUrl: string;
   /**
@@ -110,9 +159,11 @@ export type GenerationInput = {
   brandMessage: string;
   /**
    * Per-asset-type instructions. Only the field matching the call's `kind` is
-   * read by providers — `styleShot` is only used when kind === "style_shot".
+   * read by providers — `styleShot` is only used when kind === "style_shot",
+   * `shortVideo` only when kind === "short_video".
    */
   styleShot?: StyleShotSettings;
+  shortVideo?: ShortVideoSettings;
   /**
    * Set when this is a revision of a prior generation. Real provider folds
    * quickFix + note into the prompt; mock uses presence to pick a shorter
