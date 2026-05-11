@@ -72,9 +72,14 @@ function Body({
     );
   }
   return (
-    <div
-      aria-hidden
-      className="aspect-[4/3] w-full animate-pulse rounded-md border border-border bg-surface-2"
-    />
+    <div className="flex flex-col gap-2">
+      <div
+        aria-hidden
+        className="aspect-[4/3] w-full animate-pulse rounded-md border border-border bg-surface-2"
+      />
+      <p className="font-kr text-meta text-fg-muted">
+        하이퀄리티의 이미지 생성을 위해 3분이상 소요될 수 있습니다.
+      </p>
+    </div>
   );
 }

@@ -118,24 +118,34 @@ export function AssetUploadForm({
     });
   };
 
-  // Validation precedence: submitting → file → types → short_video concept → brand state
-  const disabledReason = submitting
-    ? null
-    : !file
-      ? "제품 이미지를 업로드하면 다음 단계로 진행됩니다."
-      : assetTypes.size === 0
-        ? "에셋 유형을 1개 이상 선택해주세요."
-        : assetTypes.has("short_video") && shortVideoConcept === null
-          ? "숏폼 영상 컨셉을 선택해주세요."
-          : brandStatus === "idle"
-            ? "먼저 브랜드 가이드를 적용하면 시장에 맞춘 결과물을 받을 수 있습니다."
-            : brandStatus === "analyzing"
-              ? "브랜드 분석이 끝나면 활성화됩니다."
-              : brandStatus === "error"
-                ? "브랜드 분석에 실패했습니다. 다시 업로드해주세요."
-                : null;
-
-  const canSubmit = !disabledReason && !submitting;
+  // Submission requirements surfaced as a live checklist near the CTA so the
+  // user can see at a glance what still needs to be filled. Each row toggles
+  // done as the user works through the form. Brand-guide row carries inline
+  // state in its label (분석 중 / 재업로드 필요) since users can't fix it from
+  // this form — they need context for why it's pending.
+  const checklist: { label: string; done: boolean }[] = [
+    { label: "제품 이미지", done: !!file },
+    { label: "에셋 유형 1개 이상", done: assetTypes.size > 0 },
+    ...(assetTypes.has("short_video")
+      ? [
+          {
+            label: "숏폼 영상 컨셉",
+            done: shortVideoConcept !== null,
+          },
+        ]
+      : []),
+    {
+      label:
+        brandStatus === "analyzing"
+          ? "브랜드 가이드 (분석 중)"
+          : brandStatus === "error"
+            ? "브랜드 가이드 (재업로드 필요)"
+            : "브랜드 가이드",
+      done: brandStatus === "ready",
+    },
+  ];
+  const allDone = checklist.every((c) => c.done);
+  const canSubmit = allDone && !submitting;
 
   const handleSubmit = () => {
     if (!file || assetTypes.size === 0 || brandStatus !== "ready") return;
@@ -217,7 +227,7 @@ export function AssetUploadForm({
       {/* Form card */}
       <section className="flex flex-col gap-[22px] rounded-xl border border-border bg-surface-1 p-5 sm:p-7">
         {/* Dropzone */}
-        <Field label="제품 이미지 업로드" htmlFor="product-image">
+        <Field label="제품 이미지 업로드" htmlFor="product-image" required>
           <div
             {...getRootProps({
               role: "button",
@@ -296,7 +306,7 @@ export function AssetUploadForm({
               options={[...MARKETS]}
             />
           </Field>
-          <Field label="에셋 유형">
+          <Field label="에셋 유형" required>
             <div
               role="group"
               aria-label="에셋 유형"
@@ -396,7 +406,7 @@ export function AssetUploadForm({
             on top. Both optional; absent state lets the model pick. */}
         {assetTypes.has("short_video") && (
           <>
-            <Field label="숏폼 영상 컨셉 (필수)">
+            <Field label="숏폼 영상 컨셉" required>
               <div
                 role="group"
                 aria-label="숏폼 영상 컨셉"
@@ -447,7 +457,7 @@ export function AssetUploadForm({
         )}
 
         {/* Brand message */}
-        <Field label="브랜드 메시지" htmlFor="brand-message">
+        <Field label="브랜드 메시지 (선택)" htmlFor="brand-message">
           <textarea
             id="brand-message"
             value={message}
@@ -484,16 +494,43 @@ export function AssetUploadForm({
               </>
             )}
           </button>
-          {disabledReason && (
-            <div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
-              <Info
-                className="mt-[2px] h-3.5 w-3.5 shrink-0 text-mint"
-                strokeWidth={1.75}
-                aria-hidden
-              />
-              <span className="font-kr text-[13px] leading-[1.5] text-fg-dim">
-                {disabledReason}
-              </span>
+          {!submitting && !allDone && (
+            <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <Info
+                  className="h-3.5 w-3.5 shrink-0 text-mint"
+                  strokeWidth={1.75}
+                  aria-hidden
+                />
+                <span className="font-kr text-meta text-fg-muted">
+                  생성에 필요한 항목
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1.5 pl-[22px]">
+                {checklist.map((item) => (
+                  <li
+                    key={item.label}
+                    className="flex items-center gap-2 font-kr text-[13px]"
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-pill border-[1.5px] text-[10px] leading-none",
+                        item.done
+                          ? "border-mint bg-mint text-bg"
+                          : "border-fg-faint",
+                      )}
+                    >
+                      {item.done && "✓"}
+                    </span>
+                    <span
+                      className={item.done ? "text-fg-muted" : "text-fg-dim"}
+                    >
+                      {item.label}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
@@ -513,12 +550,19 @@ export function AssetUploadForm({
 function Field({
   label,
   htmlFor,
+  required,
   children,
 }: {
   label: string;
   htmlFor?: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
+  const requiredMark = required ? (
+    <span aria-hidden className="ml-1 text-mint">
+      *
+    </span>
+  ) : null;
   if (htmlFor) {
     return (
       <div className="flex flex-col gap-2">
@@ -527,6 +571,7 @@ function Field({
           className="font-kr text-label font-medium text-fg-muted"
         >
           {label}
+          {requiredMark}
         </label>
         {children}
       </div>
@@ -536,6 +581,7 @@ function Field({
     <div className="flex flex-col gap-2">
       <span className="font-kr text-label font-medium text-fg-muted">
         {label}
+        {requiredMark}
       </span>
       {children}
     </div>

@@ -302,11 +302,18 @@ export function AssetEditDialog({
 
           {/* Footer */}
           <div className="mt-6 flex items-center justify-between border-t border-border pt-5">
-            <div className="flex items-center gap-2">
-              <StatusDot tone="active" />
-              <span className="font-kr text-[13px] text-fg-dim">
-                예상 재생성 시간: {ESTIMATED_TIME_LABEL[kind]}
-              </span>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <StatusDot tone="active" />
+                <span className="font-kr text-[13px] text-fg-dim">
+                  예상 재생성 시간: {ESTIMATED_TIME_LABEL[kind]}
+                </span>
+              </div>
+              {kind === "package" && (
+                <span className="font-kr text-meta text-fg-muted">
+                  하이퀄리티의 이미지 생성을 위해 3분이상 소요될 수 있습니다.
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
