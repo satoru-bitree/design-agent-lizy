@@ -317,11 +317,14 @@ export function AssetUploadForm({
 
         {/* Per-asset-type style references (optional). Only render dropzones
             for asset types currently selected, so it's clear which ref applies
-            where. */}
-        {assetTypes.size > 0 && (
+            where. short_video is excluded — seedance image-to-video doesn't
+            accept a reference input, so exposing the field would be misleading. */}
+        {(assetTypes.has("package") || assetTypes.has("style_shot")) && (
           <Field label="스타일 레퍼런스 (선택)">
             <div className="flex flex-col gap-2">
-              {ASSET_TYPE_ORDER.filter((t) => assetTypes.has(t)).map((t) => (
+              {ASSET_TYPE_ORDER.filter(
+                (t) => assetTypes.has(t) && t !== "short_video",
+              ).map((t) => (
                 <ReferenceRow
                   key={t}
                   kind={t}
