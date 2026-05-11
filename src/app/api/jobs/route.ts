@@ -34,11 +34,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { jobId } = await ai.startGeneration(
+    const { jobId, uploads } = await ai.startGeneration(
       body.kind as JobKind,
       body.input as GenerationInput,
     );
-    return NextResponse.json({ jobId });
+    return NextResponse.json({ jobId, uploads });
   } catch (e) {
     return NextResponse.json(
       {

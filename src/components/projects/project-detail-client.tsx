@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   deriveAssetView,
   deriveProjectStatus,
@@ -24,9 +25,16 @@ export function ProjectDetailClient({
   projectId,
   fallbackProject,
 }: ProjectDetailClientProps) {
+  const router = useRouter();
   const generated = useJobsStore((s) => s.generationProjects[projectId]);
   const jobs = useJobsStore((s) => s.jobs);
   const pollJob = useJobsStore((s) => s.pollJob);
+  const removeProject = useJobsStore((s) => s.removeProject);
+
+  const handleDelete = () => {
+    removeProject(projectId);
+    router.push("/projects");
+  };
 
   // Polling: only for generated projects with active jobs. Depending on
   // `generated` (full ref) re-fires the effect when revision submits replace
@@ -104,7 +112,11 @@ export function ProjectDetailClient({
 
   return (
     <>
-      <ProjectHeader name={data.name} status={data.status} />
+      <ProjectHeader
+        name={data.name}
+        status={data.status}
+        onDelete={generated ? handleDelete : undefined}
+      />
       <ReviewBoard
         assetTypes={data.assetTypes}
         views={data.views}

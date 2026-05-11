@@ -24,10 +24,10 @@ export function StyleShotCard({
   );
 }
 
-// Auto-fit grid: 3-col when card is wide (lg layout 1+2), 2-col when narrow
-// (xl 3-col layout / mobile). Cell stays >= 130px so photos remain evaluable.
+// 2-column grid for two style shots. Wide enough for each photo to be
+// evaluable, drops to 1-col on very narrow cards via auto-fit.
 const GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
 } as const;
 
 function Body({
@@ -88,7 +88,7 @@ function Body({
   }
   return (
     <ul className="grid gap-3" style={GRID_STYLE}>
-      {[0, 1, 2].map((i) => (
+      {[0, 1].map((i) => (
         <li key={i} className="flex flex-col gap-2">
           <div
             aria-hidden

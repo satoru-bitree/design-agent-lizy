@@ -89,37 +89,25 @@ function jobVariants(kind: JobKind): JobVariant[] {
     case "package":
       return [
         {
-          id: "pkg-de",
-          url: pic("yondu-pkg-de", 600, 800),
-          label: "DE",
-          description: "스위스 독일어권 라벨",
-        },
-        {
-          id: "pkg-fr",
-          url: pic("yondu-pkg-fr", 600, 800),
-          label: "FR",
-          description: "스위스 프랑스어권 라벨",
+          id: "pkg-label",
+          url: pic("yondu-label", 800, 600),
+          label: "라벨 v1",
+          description: "평면 라벨 아트워크",
         },
       ];
     case "style_shot":
       return [
         {
           id: "style-product",
-          url: pic("yondu-product-detail", 200, 200),
-          label: "제품 상세",
+          url: pic("yondu-product-detail", 400, 400),
+          label: "스타일 1",
           description: "스튜디오 화이트",
         },
         {
           id: "style-sns",
-          url: pic("yondu-sns-feed", 200, 200),
-          label: "SNS 피드",
-          description: "데일리 키친",
-        },
-        {
-          id: "style-ad",
-          url: pic("yondu-ad-banner", 200, 200),
-          label: "광고 배너",
-          description: "모먼트 컷",
+          url: pic("yondu-sns-feed", 400, 400),
+          label: "스타일 2",
+          description: "라이프스타일 컷",
         },
       ];
     case "short_video":
@@ -160,7 +148,10 @@ class MockProvider implements AIProvider {
   async startGeneration(
     kind: JobKind,
     input: GenerationInput,
-  ): Promise<{ jobId: string }> {
+  ): Promise<{
+    jobId: string;
+    uploads?: { product?: string; reference?: string };
+  }> {
     await sleep(120 + Math.random() * 180);
     const durations = input.revision ? REVISION_DURATIONS_MS : GEN_DURATIONS_MS;
     return { jobId: makeJobId(kind, durations) };

@@ -8,6 +8,7 @@ import {
   type SubmitData,
 } from "@/components/dashboard/asset-upload-form";
 import { BrandGuidePanel } from "@/components/dashboard/brand-guide-panel";
+import { compressImageFile } from "@/lib/image-compress";
 import { useJobsStore } from "@/lib/stores/jobs-store";
 
 export function DashboardClient() {
@@ -20,19 +21,38 @@ export function DashboardClient() {
     if (brand.status !== "ready") return;
     setSubmitting(true);
     try {
-      // Object URL persists for the lifetime of the document — used as the
-      // product image preview on /projects/[id]. (Real impl: upload to Blob first.)
       const objectUrl = URL.createObjectURL(data.file);
+      // Compress to ~1536px JPEG so the request body stays small and uploads
+      // fast — see src/lib/image-compress.ts for the trade-off rationale.
+      const dataUrl = await compressImageFile(data.file);
+
+      const refEntries = data.referenceFiles
+        ? await Promise.all(
+            (Object.entries(data.referenceFiles) as [
+              keyof typeof data.referenceFiles,
+              File,
+            ][]).map(async ([kind, f]) => {
+              const dUrl = await compressImageFile(f);
+              return [kind, { fileName: f.name, dataUrl: dUrl }] as const;
+            }),
+          )
+        : [];
+      const references =
+        refEntries.length > 0 ? Object.fromEntries(refEntries) : undefined;
+
       const projectId = await submit({
         product: {
           fileName: data.file.name,
           fileSize: data.file.size,
           objectUrl,
+          dataUrl,
         },
+        references,
         market: data.market,
         brandMessage: data.brandMessage,
         brandGuide: brand.result.brandGuide,
         assetTypes: data.assetTypes,
+        styleShotSettings: data.styleShotSettings,
       });
       router.push(`/projects/${projectId}`);
     } catch {
@@ -64,3 +84,4 @@ export function DashboardClient() {
     </div>
   );
 }
+

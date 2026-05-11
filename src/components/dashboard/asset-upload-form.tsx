@@ -7,6 +7,11 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import type { AssetType } from "@/lib/mock-data";
 import type { BrandState } from "@/lib/stores/jobs-store";
+import {
+  STYLE_SHOT_PRESETS,
+  type StyleShotPreset,
+  type StyleShotSettings,
+} from "@/lib/ai/types";
 
 const MARKETS = [
   "스위스 (독일어)",
@@ -31,9 +36,13 @@ const ASSET_TYPE_LABEL: Record<AssetType, string> = {
 
 export type SubmitData = {
   file: File;
+  /** Optional style-reference image per asset type. */
+  referenceFiles?: Partial<Record<AssetType, File>>;
   market: string;
   assetTypes: AssetType[];
   brandMessage: string;
+  /** Optional per-asset-type instructions. Only style_shot is wired today. */
+  styleShotSettings?: StyleShotSettings;
 };
 
 export type AssetUploadFormProps = {
@@ -49,11 +58,18 @@ export function AssetUploadForm({
 }: AssetUploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [referenceFiles, setReferenceFiles] = useState<
+    Partial<Record<AssetType, File>>
+  >({});
   const [market, setMarket] = useState<string>(MARKETS[0]);
   const [assetTypes, setAssetTypes] = useState<Set<AssetType>>(
     new Set(ASSET_TYPE_ORDER),
   );
   const [message, setMessage] = useState("");
+  const [styleShotPreset, setStyleShotPreset] = useState<
+    StyleShotPreset | null
+  >(null);
+  const [styleShotRequest, setStyleShotRequest] = useState("");
 
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) setFile(accepted[0]);
@@ -75,6 +91,15 @@ export function AssetUploadForm({
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  const setReferenceFor = (kind: AssetType, f: File | null) => {
+    setReferenceFiles((prev) => {
+      const next = { ...prev };
+      if (f) next[kind] = f;
+      else delete next[kind];
+      return next;
+    });
+  };
 
   const toggleType = (t: AssetType) => {
     setAssetTypes((prev) => {
@@ -104,11 +129,35 @@ export function AssetUploadForm({
 
   const handleSubmit = () => {
     if (!file || assetTypes.size === 0 || brandStatus !== "ready") return;
+    // Only send refs for currently-selected types.
+    const filteredRefs: Partial<Record<AssetType, File>> = {};
+    for (const t of ASSET_TYPE_ORDER) {
+      if (assetTypes.has(t) && referenceFiles[t]) {
+        filteredRefs[t] = referenceFiles[t];
+      }
+    }
+    // Strip style-shot settings entirely if user didn't pick a preset *and*
+    // didn't write anything — keeps GenerationInput tidy and lets providers
+    // fall back to default behavior.
+    const trimmedRequest = styleShotRequest.trim();
+    const styleShotSettings: StyleShotSettings | undefined =
+      assetTypes.has("style_shot") &&
+      (styleShotPreset !== null || trimmedRequest.length > 0)
+        ? {
+            ...(styleShotPreset !== null && { preset: styleShotPreset }),
+            ...(trimmedRequest.length > 0 && {
+              additionalRequest: trimmedRequest,
+            }),
+          }
+        : undefined;
     onSubmit?.({
       file,
+      referenceFiles:
+        Object.keys(filteredRefs).length > 0 ? filteredRefs : undefined,
       market,
       assetTypes: ASSET_TYPE_ORDER.filter((t) => assetTypes.has(t)),
       brandMessage: message,
+      styleShotSettings,
     });
   };
 
@@ -242,6 +291,79 @@ export function AssetUploadForm({
           </Field>
         </div>
 
+        {/* Per-asset-type style references (optional). Only render dropzones
+            for asset types currently selected, so it's clear which ref applies
+            where. */}
+        {assetTypes.size > 0 && (
+          <Field label="스타일 레퍼런스 (선택)">
+            <div className="flex flex-col gap-2">
+              {ASSET_TYPE_ORDER.filter((t) => assetTypes.has(t)).map((t) => (
+                <ReferenceRow
+                  key={t}
+                  kind={t}
+                  file={referenceFiles[t] ?? null}
+                  onChange={(f) => setReferenceFor(t, f)}
+                />
+              ))}
+            </div>
+          </Field>
+        )}
+
+        {/* Style shot options — only when style_shot is selected. Lets users
+            steer the shot's mood (preset) and layer free-text instructions
+            on top. Both optional; absent state is "AI decides everything". */}
+        {assetTypes.has("style_shot") && (
+          <>
+            <Field label="스타일샷 연출 (선택)">
+              <div
+                role="group"
+                aria-label="스타일샷 프리셋"
+                className="flex flex-wrap gap-2 pt-1"
+              >
+                {STYLE_SHOT_PRESETS.map((p) => (
+                  <Pill
+                    key={p.id}
+                    active={styleShotPreset === p.id}
+                    onClick={() =>
+                      setStyleShotPreset((cur) =>
+                        cur === p.id ? null : p.id,
+                      )
+                    }
+                    title={p.description}
+                  >
+                    {p.label}
+                  </Pill>
+                ))}
+              </div>
+              {styleShotPreset && (
+                <span className="font-kr text-meta text-fg-muted">
+                  {
+                    STYLE_SHOT_PRESETS.find((p) => p.id === styleShotPreset)
+                      ?.description
+                  }
+                </span>
+              )}
+            </Field>
+
+            <Field
+              label="스타일샷 추가 요청사항 (선택)"
+              htmlFor="style-shot-request"
+            >
+              <textarea
+                id="style-shot-request"
+                value={styleShotRequest}
+                onChange={(e) =>
+                  setStyleShotRequest(e.target.value.slice(0, 200))
+                }
+                rows={2}
+                maxLength={200}
+                placeholder="예: 따뜻한 골든아워 조명, 우드톤 배경"
+                className="w-full resize-none rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
+              />
+            </Field>
+          </>
+        )}
+
         {/* Brand message */}
         <Field label="브랜드 메시지" htmlFor="brand-message">
           <textarea
@@ -342,16 +464,19 @@ function Pill({
   active,
   onClick,
   children,
+  title,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       aria-pressed={active}
       onClick={onClick}
+      title={title}
       className={cn(
         "inline-flex items-center rounded-pill font-kr text-[13px] outline-none transition-all duration-200 ease-lz focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint",
         active
@@ -403,6 +528,110 @@ function SelectField({
         className="pointer-events-none absolute right-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted"
         strokeWidth={1.75}
       />
+    </div>
+  );
+}
+
+function ReferenceRow({
+  kind,
+  file,
+  onChange,
+}: {
+  kind: AssetType;
+  file: File | null;
+  onChange: (f: File | null) => void;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const onDrop = useCallback(
+    (accepted: File[]) => {
+      if (accepted[0]) onChange(accepted[0]);
+    },
+    [onChange],
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] },
+    maxSize: 10 * 1024 * 1024,
+    multiple: false,
+  });
+
+  const inputId = `ref-${kind}`;
+  const typeLabel = ASSET_TYPE_LABEL[kind];
+
+  return (
+    <div
+      {...getRootProps({
+        role: "button",
+        tabIndex: 0,
+        "aria-label": file
+          ? `${typeLabel} 레퍼런스: ${file.name}. 클릭하여 교체`
+          : `${typeLabel} 스타일 레퍼런스 이미지 업로드 (선택)`,
+      })}
+      className={cn(
+        "relative flex cursor-pointer items-center gap-3 rounded-md border-[1.5px] bg-surface-2 px-3 py-2.5 outline-none transition-colors duration-base ease-lz focus-visible:border-mint focus-visible:ring-2 focus-visible:ring-mint-ring",
+        isDragActive
+          ? "border-mint bg-mint-soft"
+          : file
+            ? "border-solid border-mint"
+            : "border-dashed border-fg-faint",
+      )}
+    >
+      <input {...getInputProps({ id: inputId, className: "sr-only" })} />
+      {/* Type pill */}
+      <span className="inline-flex shrink-0 items-center rounded-pill bg-surface-3 px-2 py-0.5 font-kr text-[11px] text-fg-dim">
+        {typeLabel}
+      </span>
+
+      {file && previewUrl ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt={file.name}
+            className="h-10 w-10 shrink-0 rounded-sm object-cover"
+          />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-kr text-[13px] font-semibold text-fg">
+              {file.name}
+            </span>
+            <span className="font-mono text-meta text-fg-muted">
+              {formatFileSize(file.size)}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(null);
+            }}
+            aria-label={`${typeLabel} 레퍼런스 제거`}
+            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-pill bg-bg/60 text-fg-dim outline-none transition-colors duration-micro ease-lz hover:bg-bg hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+          >
+            <X className="h-3 w-3" strokeWidth={1.75} />
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-surface-3 text-fg-muted">
+            <CloudUpload className="h-3.5 w-3.5" strokeWidth={1.5} />
+          </div>
+          <span className="font-kr text-[12.5px] text-fg-dim">
+            참고 이미지 드래그 / 클릭
+          </span>
+        </>
+      )}
     </div>
   );
 }

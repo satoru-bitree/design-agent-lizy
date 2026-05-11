@@ -1,9 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { PaletteSync } from "@/components/dashboard/palette-sync";
 import { BrandUploadZone } from "@/components/dashboard/brand-upload-zone";
 import { useJobsStore } from "@/lib/stores/jobs-store";
+import {
+  koreanCompanion,
+  loadBrandFontWithKorean,
+  primaryFamily,
+} from "@/lib/font-loader";
 import type { BrandGuide } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +17,19 @@ export function BrandGuidePanel() {
   const brand = useJobsStore((s) => s.brand);
   const upload = useJobsStore((s) => s.uploadAndExtract);
   const reset = useJobsStore((s) => s.resetBrand);
+
+  // Pull Google Fonts for the analyzed brand on the fly so the wordmark and
+  // typography preview render with the actual family — otherwise the browser
+  // silently falls back and every brand looks like Inter.
+  // Also pulls a Korean companion font for each Latin family, so 한글 본문도
+  // 브랜드 결을 따라간다 (Latin Google Fonts have no Korean glyphs).
+  useEffect(() => {
+    if (brand.status !== "ready") return;
+    const g = brand.result.brandGuide;
+    loadBrandFontWithKorean(g.logoWordmark?.family);
+    loadBrandFontWithKorean(g.typography.heading);
+    loadBrandFontWithKorean(g.typography.body);
+  }, [brand]);
 
   return (
     <aside className="flex flex-col gap-6 rounded-xl border border-border bg-surface-1 p-5 transition-colors duration-micro ease-lz hover:border-border-strong sm:p-6">
@@ -208,12 +227,20 @@ function Section({
 function LogoBlock({ guide }: { guide: BrandGuide }) {
   if (guide.logoWordmark) {
     const w = guide.logoWordmark;
+    // Flip the inset background when the wordmark itself is dark — otherwise
+    // black-on-near-black logos (e.g. CHANEL) disappear on the default surface.
+    const { bg, border } = pickLogoSurface(w.color);
+    const familyName = primaryFamily(w.family) ?? w.family;
+    const fontStack = `"${familyName}", var(--font-display), system-ui, sans-serif`;
     return (
-      <div className="flex justify-center rounded-md border border-border bg-[#0A0A0A] py-7">
+      <div
+        className="flex justify-center rounded-md border py-7"
+        style={{ backgroundColor: bg, borderColor: border }}
+      >
         <span
           className="select-none"
           style={{
-            fontFamily: w.family,
+            fontFamily: fontStack,
             fontSize: 32,
             fontWeight: w.weight ?? 700,
             color: w.color,
@@ -226,12 +253,33 @@ function LogoBlock({ guide }: { guide: BrandGuide }) {
       </div>
     );
   }
+  // Image logos: we can't sniff their color cheaply, so default to a light
+  // surface (most brand-mark exports are dark ink on transparent backgrounds).
   return (
-    <div className="flex justify-center rounded-md border border-border bg-[#0A0A0A] px-4 py-7">
+    <div className="flex justify-center rounded-md border border-border bg-[#F5F5F5] px-4 py-7">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={guide.logo} alt="brand logo" className="max-h-12 w-auto" />
     </div>
   );
+}
+
+/**
+ * Pick a logo-card surface that contrasts with the wordmark color.
+ * Threshold tuned against the design's #0A0A0A canon — anything darker than
+ * mid-gray flips to a light surface.
+ */
+function pickLogoSurface(hex: string): { bg: string; border: string } {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) return { bg: "#0A0A0A", border: "var(--border)" };
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 0xff;
+  const g = (n >> 8) & 0xff;
+  const b = n & 0xff;
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  if (luminance < 0.45) {
+    return { bg: "#F5F5F5", border: "rgba(0,0,0,0.08)" };
+  }
+  return { bg: "#0A0A0A", border: "var(--border)" };
 }
 
 function TypographyBlock({
@@ -241,28 +289,65 @@ function TypographyBlock({
   typography: BrandGuide["typography"];
   brandName?: string;
 }) {
+  // Single-typeface brand system: heading + body share the family, only weight
+  // and size differ. Google Fonts <link> is injected by BrandGuidePanel
+  // useEffect.
+  // Stack order: Latin brand face → Korean companion (matched by mood) →
+  // var(--font-display) → Pretendard. Browsers walk per-glyph: Latin glyphs
+  // hit the brand face, Hangul glyphs hit the companion (since Latin display
+  // fonts ship no 한글 glyphs at all), everything else falls through.
+  const familyName = primaryFamily(typography.heading) ?? typography.heading;
+  const koCompanion = koreanCompanion(typography.heading);
+  const fontStack = [
+    `"${familyName}"`,
+    koCompanion ? `"${koCompanion}"` : null,
+    "var(--font-display)",
+    "var(--font-kr)",
+    "system-ui",
+    "sans-serif",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return (
     <div className="flex flex-col gap-1 rounded-md bg-surface-2 p-4">
       <div
         className="text-[9px] uppercase text-fg-muted"
         style={{ letterSpacing: "0.08em" }}
       >
-        HEADING / {typography.heading.toUpperCase()} BOLD
+        HEADING / {familyName.toUpperCase()} BOLD
       </div>
       <div
-        className="font-kr text-h3 font-bold text-fg"
-        style={{ fontFamily: `${typography.heading}, var(--font-display)` }}
+        className="text-h3 font-bold text-fg"
+        style={{ fontFamily: fontStack }}
       >
-        {brandName ? `${brandName} 브랜드 시스템` : "장인 디자인 에이전트"}
+        {brandName ?? "Brand System"}
       </div>
+      <div
+        className="text-[11px] text-fg-muted"
+        style={{ fontFamily: fontStack, letterSpacing: "0.04em" }}
+      >
+        Aa Bb Cc · 1234567890
+      </div>
+
       <div aria-hidden className="my-2 h-px bg-border" />
+
       <div
         className="text-[9px] uppercase text-fg-muted"
         style={{ letterSpacing: "0.08em" }}
       >
-        BODY / {typography.body.toUpperCase()} REGULAR
+        BODY / {familyName.toUpperCase()} REGULAR
       </div>
-      <div className="font-kr text-[12px] leading-[1.5] text-fg-dim">
+      <div
+        className="text-[13px] leading-[1.5] text-fg"
+        style={{ fontFamily: fontStack }}
+      >
+        The quick brown fox jumps over the lazy dog.
+      </div>
+      <div
+        className="text-[12px] leading-[1.5] text-fg-dim"
+        style={{ fontFamily: fontStack }}
+      >
         크리에이티브 제작의 미래는 에이전틱하고 정밀하며 시각적으로 완벽합니다.
       </div>
     </div>

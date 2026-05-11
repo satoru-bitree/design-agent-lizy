@@ -63,10 +63,15 @@ function StatusPill({ view }: { view: AssetView }) {
     );
   }
   if (view.status === "running") {
+    // Progress is a time-vs-estimate synthesis, not a real fal signal.
+    // Once we hit the cap, show "마무리 중" instead of a frozen number — the
+    // model is working past our estimate, not stalled.
+    const pct = Math.round(view.progress * 100);
+    const stalled = view.progress >= 0.9;
     return (
       <span className="inline-flex items-center gap-1.5 rounded-pill bg-mint-soft px-2.5 py-1 font-mono text-[11px] text-mint">
         <StatusDot tone="pending" />
-        생성 중 {Math.round(view.progress * 100)}%
+        {stalled ? "마무리 중" : `생성 중 ${pct}%`}
       </span>
     );
   }

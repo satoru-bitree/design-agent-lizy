@@ -9,6 +9,7 @@ type Body = {
   fileSize?: unknown;
   mimeType?: unknown;
   sourceUrl?: unknown;
+  imageDataUrl?: unknown;
 };
 
 export async function POST(req: Request) {
@@ -39,6 +40,8 @@ export async function POST(req: Request) {
           : "application/octet-stream",
       sourceUrl:
         typeof body.sourceUrl === "string" ? body.sourceUrl : undefined,
+      imageDataUrl:
+        typeof body.imageDataUrl === "string" ? body.imageDataUrl : undefined,
     });
     return NextResponse.json(result);
   } catch (e) {

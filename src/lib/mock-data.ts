@@ -142,16 +142,10 @@ const PROJ_1: Project = {
       status: "ready",
       variants: [
         {
-          id: "pkg-de",
-          url: "https://picsum.photos/seed/yondu-pkg-de/600/800",
-          label: "DE",
-          description: "스위스 독일어권 라벨",
-        },
-        {
-          id: "pkg-fr",
-          url: "https://picsum.photos/seed/yondu-pkg-fr/600/800",
-          label: "FR",
-          description: "스위스 프랑스어권 라벨",
+          id: "pkg-label",
+          url: "https://picsum.photos/seed/yondu-label/800/600",
+          label: "라벨 v1",
+          description: "평면 라벨 아트워크",
         },
       ],
     },
@@ -162,21 +156,15 @@ const PROJ_1: Project = {
       variants: [
         {
           id: "style-product",
-          url: "https://picsum.photos/seed/yondu-product-detail/200/200",
-          label: "제품 상세",
+          url: "https://picsum.photos/seed/yondu-product-detail/400/400",
+          label: "스타일 1",
           description: "깔끔한 스튜디오 배경 — 화이트 클린",
         },
         {
           id: "style-sns",
-          url: "https://picsum.photos/seed/yondu-sns-feed/200/200",
-          label: "SNS 피드",
+          url: "https://picsum.photos/seed/yondu-sns-feed/400/400",
+          label: "스타일 2",
           description: "라이프스타일 화면 구성 — 데일리 키친",
-        },
-        {
-          id: "style-ad",
-          url: "https://picsum.photos/seed/yondu-ad-banner/200/200",
-          label: "광고 배너",
-          description: "대비가 강한 주방 배경 — 모먼트 컷",
         },
       ],
     },

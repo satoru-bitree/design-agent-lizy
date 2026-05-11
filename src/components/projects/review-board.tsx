@@ -10,7 +10,10 @@ import { ImageLightbox } from "@/components/projects/image-lightbox";
 import type { AssetType } from "@/lib/mock-data";
 import { useJobsStore, type AssetView } from "@/lib/stores/jobs-store";
 
-type Editing = { kind: AssetType; image: string; alt: string };
+type Editing = {
+  kind: AssetType;
+  variants: { id: string; url: string; label?: string }[];
+};
 type Lightbox = { src: string; alt: string; caption?: string };
 
 const VALID_KINDS: readonly AssetType[] = [
@@ -42,8 +45,11 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
     if (!view || view.status !== "ready") return;
     setEditing({
       kind,
-      image: view.variants[0]?.url ?? "",
-      alt: view.variants[0]?.label ?? "",
+      variants: view.variants.map((v) => ({
+        id: v.id,
+        url: v.url,
+        label: v.label,
+      })),
     });
   }, [params, views]);
 
@@ -52,8 +58,11 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
     if (!view || view.status !== "ready") return;
     setEditing({
       kind,
-      image: view.variants[0]?.url ?? "",
-      alt: view.variants[0]?.label ?? "",
+      variants: view.variants.map((v) => ({
+        id: v.id,
+        url: v.url,
+        label: v.label,
+      })),
     });
   };
 
@@ -98,15 +107,15 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
           if (!open) setEditing(null);
         }}
         kind={editing?.kind ?? "style_shot"}
-        currentImageUrl={editing?.image ?? ""}
-        currentImageAlt={editing?.alt}
-        onSubmit={({ quickFix, note }) => {
+        variants={editing?.variants ?? []}
+        onSubmit={({ quickFix, note, baseVariantUrl }) => {
           if (!projectId || !editing) return;
           void submitRevision({
             projectId,
             kind: editing.kind,
             quickFix,
             note,
+            baseVariantUrl,
           });
         }}
       />

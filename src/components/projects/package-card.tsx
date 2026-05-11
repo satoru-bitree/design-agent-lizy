@@ -32,55 +32,49 @@ function Body({
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
   if (view.status === "ready") {
+    // gpt-image-2/edit returns a single landscape die-line label artwork.
+    // Render it full-width at 4:3 to match what the model produces.
+    const v = view.variants[0];
+    if (!v) return null;
     return (
-      <div className="grid grid-cols-2 gap-3">
-        {view.variants.map((v) => (
-          <button
-            type="button"
-            key={v.id}
-            onClick={() =>
-              onOpenVariant?.(
-                v.url,
-                v.label ?? "package variant",
-                v.description ?? v.label,
-              )
-            }
-            aria-label={`${v.label ?? "패키지 변형"} 크게 보기`}
-            className="group relative block aspect-[3/4] cursor-zoom-in overflow-hidden rounded-md border border-border bg-surface-2 outline-none transition-colors duration-micro ease-lz hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
-          >
-            <Image
-              src={v.url}
-              alt={v.label ?? "package variant"}
-              fill
-              sizes="(min-width: 1024px) 200px, 50vw"
-              className="object-cover transition-transform duration-base ease-lz group-hover:scale-[1.02]"
-            />
-            {v.label && (
-              <span className="absolute left-2 top-2 rounded-[4px] bg-black/60 px-1.5 py-0.5 font-mono text-[10px] font-medium text-fg">
-                {v.label}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={() =>
+          onOpenVariant?.(
+            v.url,
+            v.label ?? "label artwork",
+            v.description ?? v.label,
+          )
+        }
+        aria-label={`${v.label ?? "라벨 디자인"} 크게 보기`}
+        className="group relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-md border border-border bg-surface-2 outline-none transition-colors duration-micro ease-lz hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+      >
+        <Image
+          src={v.url}
+          alt={v.label ?? "label artwork"}
+          fill
+          sizes="(min-width: 1280px) 400px, (min-width: 1024px) 50vw, 100vw"
+          className="object-contain transition-transform duration-base ease-lz group-hover:scale-[1.02]"
+        />
+        {v.label && (
+          <span className="absolute left-2 top-2 rounded-[4px] bg-black/60 px-1.5 py-0.5 font-mono text-[10px] font-medium text-fg">
+            {v.label}
+          </span>
+        )}
+      </button>
     );
   }
   if (view.status === "failed") {
     return (
-      <div className="flex aspect-[3/2] items-center justify-center rounded-md border border-state-danger/30 bg-state-danger/5 px-5 text-center font-kr text-[13px] text-state-danger">
+      <div className="flex aspect-[4/3] items-center justify-center rounded-md border border-state-danger/30 bg-state-danger/5 px-5 text-center font-kr text-[13px] text-state-danger">
         {view.error}
       </div>
     );
   }
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {[0, 1].map((i) => (
-        <div
-          key={i}
-          aria-hidden
-          className="aspect-[3/4] animate-pulse rounded-md border border-border bg-surface-2"
-        />
-      ))}
-    </div>
+    <div
+      aria-hidden
+      className="aspect-[4/3] w-full animate-pulse rounded-md border border-border bg-surface-2"
+    />
   );
 }
