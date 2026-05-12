@@ -12,9 +12,16 @@ function isVideoUrl(url: string): boolean {
 
 export function ShortVideoCard({
   view,
+  description,
   onRequestRevision,
 }: {
   view: AssetView;
+  /**
+   * Project-level Korean description of the intended style (concept + market +
+   * brand mood + any user note). Rendered below the video preview when the
+   * asset is ready. Null when project context isn't available (legacy fixture).
+   */
+  description?: string | null;
   onRequestRevision?: () => void;
 }) {
   return (
@@ -24,12 +31,18 @@ export function ShortVideoCard({
       view={view}
       onRequestRevision={onRequestRevision}
     >
-      <Body view={view} />
+      <Body view={view} description={description ?? null} />
     </AssetResultCard>
   );
 }
 
-function Body({ view }: { view: AssetView }) {
+function Body({
+  view,
+  description,
+}: {
+  view: AssetView;
+  description: string | null;
+}) {
   if (view.status === "ready") {
     const variant = view.variants[0];
     if (!variant) return null;
@@ -77,7 +90,7 @@ function Body({ view }: { view: AssetView }) {
             )}
           </div>
         </div>
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-1.5">
           <p className="font-kr text-[14px] font-semibold text-fg">
             {meta.concept ?? meta.platforms ?? variant.label ?? "숏폼 영상"}
           </p>
@@ -86,6 +99,11 @@ function Body({ view }: { view: AssetView }) {
               .filter((s): s is string => !!s)
               .join(" · ")}
           </p>
+          {description && (
+            <p className="mt-1 max-w-[260px] text-center font-kr text-[12px] leading-[1.55] text-fg-dim">
+              {description}
+            </p>
+          )}
         </div>
       </div>
     );

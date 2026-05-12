@@ -582,7 +582,14 @@ class FalProvider implements AIProvider {
         const result = await fal.queue.result(model, {
           requestId: parsed.requestId,
         });
-        const variants = parseVariants(parsed.kind, result.data, {
+        // Package: upscale gpt-image-2's max 1536x1024 output to ~6144x4096
+        // (4x via aura-sr) so the label is print-ready. Failure is non-fatal
+        // and falls back to the original URL.
+        const data =
+          parsed.kind === "package"
+            ? await upscalePackageResult(result.data)
+            : result.data;
+        const variants = parseVariants(parsed.kind, data, {
           concept: parsed.concept,
         });
         return {
@@ -869,6 +876,52 @@ function modelForKind(kind: JobKind): string {
 
 type FalImage = { url: string; width?: number; height?: number };
 type FalVideo = { url: string };
+
+/**
+ * Send a raster image URL through aura-sr for 4x upscaling. Used for package
+ * (label) generation to lift gpt-image-2's 1536x1024 output up to ~6144x4096
+ * print-ready resolution. Failure is intentionally non-fatal — we fall back to
+ * the original URL so the user still gets a usable (lower-res) result rather
+ * than a hard error.
+ */
+async function upscaleImage(url: string): Promise<string> {
+  try {
+    const result = await fal.subscribe("fal-ai/aura-sr", {
+      input: {
+        image_url: url,
+        // 4x = ~6144x4096 from a 1536x1024 source. Aligns with 300dpi print
+        // size for typical label spreads (~20cm wide).
+        upscale_factor: 4,
+        // Overlapping tiles roughly doubles inference time but eliminates the
+        // visible seam artifacts that the tile-based upscaler otherwise leaves
+        // on busy label compositions.
+        overlapping_tiles: true,
+      },
+    });
+    const upscaled = (result.data as { image?: { url?: string } } | undefined)
+      ?.image?.url;
+    return upscaled ?? url;
+  } catch (e) {
+    console.error("[fal] upscaleImage failed, falling back to original:", e);
+    return url;
+  }
+}
+
+/**
+ * Apply 4x upscaling to every image URL inside a package result payload.
+ * Returns a shallow-cloned `data` object with the images' URLs swapped — leaves
+ * any non-image fields untouched and preserves width/height (the model API
+ * doesn't ship the new dimensions back, so consumers shouldn't rely on those).
+ */
+async function upscalePackageResult(data: unknown): Promise<unknown> {
+  const d = (data ?? {}) as { images?: FalImage[] };
+  const images = d.images ?? [];
+  if (images.length === 0) return data;
+  const upscaled = await Promise.all(
+    images.map(async (img) => ({ ...img, url: await upscaleImage(img.url) })),
+  );
+  return { ...(data as object), images: upscaled };
+}
 
 function parseVariants(
   kind: JobKind,

@@ -1,7 +1,8 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
+import { deriveDownloadFilename, downloadFile } from "@/lib/download";
 
 export type ImageLightboxProps = {
   open: boolean;
@@ -35,17 +36,33 @@ export function ImageLightbox({
               className="max-h-[82vh] max-w-[92vw] rounded-md object-contain shadow-modal"
             />
 
-            <DialogPrimitive.Close
-              render={
-                <button
-                  type="button"
-                  aria-label="닫기"
-                  className="absolute right-3 top-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-pill bg-bg/80 text-fg-dim outline-none transition-colors duration-micro ease-lz hover:bg-bg hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
-                />
-              }
-            >
-              <X className="h-4 w-4" strokeWidth={1.75} />
-            </DialogPrimitive.Close>
+            <div className="absolute right-3 top-3 flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="이미지 다운로드"
+                title="이미지 다운로드"
+                onClick={() =>
+                  downloadFile(
+                    src,
+                    deriveDownloadFilename(src, caption ?? alt, "asset"),
+                  )
+                }
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-pill bg-bg/80 text-fg-dim outline-none transition-colors duration-micro ease-lz hover:bg-bg hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+              >
+                <Download className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+              <DialogPrimitive.Close
+                render={
+                  <button
+                    type="button"
+                    aria-label="닫기"
+                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-pill bg-bg/80 text-fg-dim outline-none transition-colors duration-micro ease-lz hover:bg-bg hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+                  />
+                }
+              >
+                <X className="h-4 w-4" strokeWidth={1.75} />
+              </DialogPrimitive.Close>
+            </div>
           </div>
 
           {caption && (

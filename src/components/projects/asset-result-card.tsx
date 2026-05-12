@@ -10,6 +10,12 @@ export type AssetResultCardProps = {
   view: AssetView;
   onApprove?: () => void;
   onRequestRevision?: () => void;
+  /**
+   * Optional secondary action(s) rendered ABOVE the primary 승인 / 수정 요청
+   * buttons when the asset is ready. Used for tertiary affordances like "PNG
+   * 다운로드" — kept visually lighter so it doesn't compete with the main CTA.
+   */
+  extraFooterAction?: ReactNode;
   className?: string;
 };
 
@@ -20,6 +26,7 @@ export function AssetResultCard({
   view,
   onApprove,
   onRequestRevision,
+  extraFooterAction,
   className,
 }: AssetResultCardProps) {
   const isReady = view.status === "ready";
@@ -45,6 +52,7 @@ export function AssetResultCard({
 
       {isReady && (
         <footer className="flex flex-col gap-2 pt-2">
+          {extraFooterAction}
           <ApproveButton onClick={onApprove} />
           <RevisionButton onClick={onRequestRevision} />
         </footer>

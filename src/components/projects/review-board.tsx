@@ -9,6 +9,10 @@ import { AssetEditDialog } from "@/components/projects/asset-edit-dialog";
 import { ImageLightbox } from "@/components/projects/image-lightbox";
 import type { AssetType } from "@/lib/mock-data";
 import { useJobsStore, type AssetView } from "@/lib/stores/jobs-store";
+import {
+  buildShortVideoDescription,
+  buildStyleShotDescription,
+} from "@/lib/asset-descriptions";
 
 type Editing = {
   kind: AssetType;
@@ -74,6 +78,18 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
   const styleView = views.style_shot;
   const videoView = views.short_video;
 
+  // Project context for description rendering. Null for legacy fixture
+  // projects (no stored settings — cards fall back to no description).
+  const project = useJobsStore((s) =>
+    projectId ? s.generationProjects[projectId] : null,
+  );
+  const styleShotDescription = project
+    ? buildStyleShotDescription(project)
+    : null;
+  const shortVideoDescription = project
+    ? buildShortVideoDescription(project)
+    : null;
+
   return (
     <>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
@@ -89,6 +105,7 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
         {assetTypes.includes("style_shot") && styleView && (
           <StyleShotCard
             view={styleView}
+            description={styleShotDescription}
             onRequestRevision={() => openReady("style_shot")}
             onOpenVariant={openLightbox}
           />
@@ -96,6 +113,7 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
         {assetTypes.includes("short_video") && videoView && (
           <ShortVideoCard
             view={videoView}
+            description={shortVideoDescription}
             onRequestRevision={() => openReady("short_video")}
           />
         )}

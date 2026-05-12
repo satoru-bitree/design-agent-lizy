@@ -5,10 +5,17 @@ import type { AssetView } from "@/lib/stores/jobs-store";
 
 export function StyleShotCard({
   view,
+  description,
   onRequestRevision,
   onOpenVariant,
 }: {
   view: AssetView;
+  /**
+   * Project-level Korean description of the intended style (preset + market +
+   * brand mood + any user note). Rendered above the variant grid when the
+   * asset is ready. Null when project context isn't available (legacy fixture).
+   */
+  description?: string | null;
   onRequestRevision?: () => void;
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
@@ -19,6 +26,11 @@ export function StyleShotCard({
       view={view}
       onRequestRevision={onRequestRevision}
     >
+      {view.status === "ready" && description && (
+        <p className="mb-3 font-kr text-[12.5px] leading-[1.55] text-fg-dim">
+          {description}
+        </p>
+      )}
       <Body view={view} onOpenVariant={onOpenVariant} />
     </AssetResultCard>
   );
