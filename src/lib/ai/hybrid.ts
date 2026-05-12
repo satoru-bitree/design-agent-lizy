@@ -24,6 +24,8 @@ const pick = (t: Target): AIProvider => (t === "fal" ? falProvider : mockProvide
 export function makeHybridProvider(config: HybridConfig): AIProvider {
   return {
     extractBrandGuide: (input) => pick(config.brand).extractBrandGuide(input),
+    interpretBrandSection: (input) =>
+      pick(config.brand).interpretBrandSection(input),
     startGeneration: (kind, input) =>
       pick(config.generation[kind]).startGeneration(kind, input),
     getJob: (jobId) => {

@@ -8,11 +8,19 @@ import {
   YONDU_GUIDE,
   type BrandGuide,
 } from "@/lib/mock-data";
+import {
+  parseMoodText,
+  parsePaletteText,
+  parseTypographyText,
+} from "@/lib/brand-section-parse";
+import { isAllowedFont } from "@/lib/font-loader";
 import type { AIProvider } from "./provider";
 import {
   AIError,
   type BrandExtractionInput,
   type BrandExtractionResult,
+  type BrandSectionInterpretInput,
+  type BrandSectionInterpretResult,
   type GenerationInput,
   type Job,
   type JobKind,
@@ -128,6 +136,144 @@ function jobVariants(kind: JobKind): JobVariant[] {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Mock natural-language interpretation                                       */
+/* -------------------------------------------------------------------------- */
+
+type PaletteSwatch = { hex: string; name?: string };
+type MoodPreset = {
+  match: RegExp;
+  palette: PaletteSwatch[];
+  fonts: { heading: string; body: string };
+  caption: string;
+};
+
+// Mood presets — match Korean and English keywords to a hand-picked palette,
+// font pairing, and caption. First match wins; fall through to a generic
+// preset if nothing matches. Keeps the offline experience usable when
+// FAL_KEY is missing.
+const MOOD_PRESETS: MoodPreset[] = [
+  {
+    match: /가을|단풍|autumn|fall|warm earth|토속|herit|전통|artisan/i,
+    palette: [
+      { hex: "#C9633B", name: "Maple" },
+      { hex: "#E9C46A", name: "Honey" },
+      { hex: "#2A2118", name: "Walnut" },
+    ],
+    fonts: { heading: "Playfair Display", body: "Playfair Display" },
+    caption: "ARTISAN HERITAGE",
+  },
+  {
+    match: /luxury|고급|프리미엄|premium|에르메스|샤넬|hermes|chanel|black\s*tie/i,
+    palette: [
+      { hex: "#0A0A0A", name: "Onyx" },
+      { hex: "#D4AF7F", name: "Champagne" },
+      { hex: "#F4F1EC", name: "Ivory" },
+    ],
+    fonts: { heading: "Bodoni Moda", body: "Bodoni Moda" },
+    caption: "QUIET LUXURY",
+  },
+  {
+    match: /tech|디지털|digital|saas|미니멀|minimal|crisp|clean|모던|modern/i,
+    palette: [
+      { hex: "#0F172A", name: "Obsidian" },
+      { hex: "#3B82F6", name: "Signal" },
+      { hex: "#FAFAFA", name: "Snow" },
+    ],
+    fonts: { heading: "Inter", body: "Inter" },
+    caption: "DIGITAL CLARITY",
+  },
+  {
+    match: /자연|nature|organic|fresh|식물|leaf|botanical|친환경|eco/i,
+    palette: [
+      { hex: "#3FA66E", name: "Leaf" },
+      { hex: "#F4F1DE", name: "Cream" },
+      { hex: "#264653", name: "Forest" },
+    ],
+    fonts: { heading: "Manrope", body: "Manrope" },
+    caption: "FRESH ESSENCE",
+  },
+  {
+    match: /따뜻|warm|친근|friendly|코지|cozy|아늑|soft pastel/i,
+    palette: [
+      { hex: "#F4B5C0", name: "Blush" },
+      { hex: "#F4D35E", name: "Butter" },
+      { hex: "#8B5A3C", name: "Cocoa" },
+    ],
+    fonts: { heading: "DM Sans", body: "DM Sans" },
+    caption: "WARM COMFORT",
+  },
+  {
+    match: /오션|바다|coastal|marine|시원|cool|시리얼|crisp blue/i,
+    palette: [
+      { hex: "#1D3557", name: "Deep Blue" },
+      { hex: "#A8DADC", name: "Lagoon" },
+      { hex: "#F1FAEE", name: "Bone" },
+    ],
+    fonts: { heading: "Manrope", body: "Manrope" },
+    caption: "COASTAL CLARITY",
+  },
+  {
+    match: /빈티지|vintage|레트로|retro|nostalg/i,
+    palette: [
+      { hex: "#D9A441", name: "Brass" },
+      { hex: "#2E2A26", name: "Espresso" },
+      { hex: "#F4E5C7", name: "Parchment" },
+    ],
+    fonts: { heading: "Lora", body: "Lora" },
+    caption: "VINTAGE NOTES",
+  },
+];
+
+const DEFAULT_PRESET: MoodPreset = {
+  match: /.^/,
+  palette: [
+    { hex: "#0A0A0A", name: "Ink" },
+    { hex: "#5DBE8D", name: "Mint" },
+    { hex: "#F4F1DE", name: "Cream" },
+  ],
+  fonts: { heading: "Inter", body: "Inter" },
+  caption: "BRAND MOOD",
+};
+
+function pickPreset(text: string): MoodPreset {
+  return MOOD_PRESETS.find((p) => p.match.test(text)) ?? DEFAULT_PRESET;
+}
+
+/** Mock natural-language interpretation. Tries deterministic parsers first
+ *  (so users typing hex codes or exact font names get exact output), then
+ *  falls back to a keyword-driven mood preset. */
+function interpretBrandSectionMock(
+  input: BrandSectionInterpretInput,
+): BrandSectionInterpretResult {
+  const text = input.text.trim();
+  if (input.section === "palette") {
+    const literal = parsePaletteText(text);
+    if (literal.length > 0) return { section: "palette", palette: literal };
+    return { section: "palette", palette: pickPreset(text).palette };
+  }
+  if (input.section === "typography") {
+    // Only honor a literal parse if every family lands in the Google Fonts
+    // allowlist — otherwise a natural-language phrase like "고급스러운 세리프"
+    // gets stamped onto BrandGuide.typography and the preview renders in a
+    // missing font.
+    const literal = parseTypographyText(text);
+    if (literal && isAllowedFont(literal.heading) && isAllowedFont(literal.body)) {
+      return { section: "typography", typography: literal };
+    }
+    return { section: "typography", typography: pickPreset(text).fonts };
+  }
+  // mood: short caption. If user typed something descriptive, summarize via
+  // the preset; otherwise just upper-case their text.
+  const base = parseMoodText(text);
+  if (!base) return { section: "mood", moodCaption: pickPreset(text).caption };
+  // If the user typed a phrase like "ARTISAN HERITAGE", keep it. Otherwise
+  // hand back the preset caption — it reads better than "따뜻한 가을 톤".
+  const looksLikeCaption = /^[A-Z0-9\s&·.-]{3,40}$/.test(base);
+  if (looksLikeCaption) return { section: "mood", moodCaption: base };
+  return { section: "mood", moodCaption: pickPreset(text).caption };
+}
+
 class MockProvider implements AIProvider {
   async extractBrandGuide(
     input: BrandExtractionInput,
@@ -143,6 +289,13 @@ class MockProvider implements AIProvider {
       brandGuide: pickFixture(input.fileName),
       confidence: { logo: 0.93, palette: 0.88, typography: 0.74, mood: 0.81 },
     };
+  }
+
+  async interpretBrandSection(
+    input: BrandSectionInterpretInput,
+  ): Promise<BrandSectionInterpretResult> {
+    await sleep(jitter({ min: 400, max: 900 }));
+    return interpretBrandSectionMock(input);
   }
 
   async startGeneration(

@@ -5,27 +5,32 @@ import { useDropzone } from "react-dropzone";
 import { CloudUpload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type BrandUploadZoneProps = {
+export type BrandSectionUploadProps = {
   onFile: (file: File) => void;
+  /** Label rendered inside the dropzone. */
+  label?: string;
   className?: string;
-  /** Compact trigger for "filled" state (small "변경" pill). */
+  /** Compact 1-line strip for in-section uploads (palette/typo/mood). */
   compact?: boolean;
 };
 
 const ACCEPT = {
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
+  "image/webp": [".webp"],
+  "image/gif": [".gif"],
+  "image/avif": [".avif"],
   "image/svg+xml": [".svg"],
-  "application/pdf": [".pdf"],
 };
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
-export function BrandUploadZone({
+export function BrandSectionUpload({
   onFile,
+  label = "이미지 업로드",
   className,
   compact,
-}: BrandUploadZoneProps) {
+}: BrandSectionUploadProps) {
   const onDrop = useCallback(
     (files: File[]) => {
       if (files[0]) onFile(files[0]);
@@ -46,16 +51,20 @@ export function BrandUploadZone({
         {...getRootProps({
           role: "button",
           tabIndex: 0,
-          "aria-label": "브랜드 자산 다시 업로드",
+          "aria-label": label,
         })}
         className={cn(
-          "inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-pill border border-border bg-surface-2 px-2.5 py-1 font-kr text-[11px] text-fg-dim outline-none transition-colors duration-micro ease-lz hover:border-mint hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint",
+          "flex h-[60px] cursor-pointer items-center justify-center gap-2 rounded-md border-[1.5px] border-dashed bg-surface-2 outline-none transition-colors duration-base ease-lz focus-visible:border-mint focus-visible:ring-2 focus-visible:ring-mint-ring",
+          isDragActive
+            ? "border-mint bg-mint-soft"
+            : "border-fg-faint hover:border-border-strong",
           className,
         )}
       >
         <input {...getInputProps()} />
-        <CloudUpload className="h-3 w-3" strokeWidth={1.75} />
-        <span>변경</span>
+        <CloudUpload className="h-3.5 w-3.5 text-mint" strokeWidth={1.75} />
+        <span className="font-kr text-[11px] text-fg-dim">{label}</span>
+        <span className="font-kr text-[10px] text-fg-faint">(PNG·JPG·SVG·WEBP)</span>
       </div>
     );
   }
@@ -65,10 +74,10 @@ export function BrandUploadZone({
       {...getRootProps({
         role: "button",
         tabIndex: 0,
-        "aria-label": "브랜드 자산 업로드 (PDF·PNG·JPG·SVG, 최대 20MB)",
+        "aria-label": label,
       })}
       className={cn(
-        "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-[1.5px] border-dashed bg-surface-2 px-6 py-8 outline-none transition-colors duration-base ease-lz focus-visible:border-mint focus-visible:ring-2 focus-visible:ring-mint-ring",
+        "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-[1.5px] border-dashed bg-surface-2 px-6 py-7 outline-none transition-colors duration-base ease-lz focus-visible:border-mint focus-visible:ring-2 focus-visible:ring-mint-ring",
         isDragActive ? "border-mint bg-mint-soft" : "border-fg-faint",
         className,
       )}
@@ -82,11 +91,9 @@ export function BrandUploadZone({
       >
         <CloudUpload className="h-5 w-5" strokeWidth={1.5} />
       </div>
-      <div className="font-kr text-[13px] font-semibold text-fg">
-        브랜드 가이드 업로드
-      </div>
+      <div className="font-kr text-[13px] font-semibold text-fg">{label}</div>
       <div className="px-4 text-center font-kr text-meta text-fg-muted">
-        PDF · 이미지 · SVG · 최대 20MB
+        PNG · JPG · SVG · WEBP · 최대 20MB
       </div>
     </div>
   );

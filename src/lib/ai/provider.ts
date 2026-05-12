@@ -1,6 +1,8 @@
 import type {
   BrandExtractionInput,
   BrandExtractionResult,
+  BrandSectionInterpretInput,
+  BrandSectionInterpretResult,
   GenerationInput,
   Job,
   JobKind,
@@ -15,6 +17,14 @@ import type {
 export interface AIProvider {
   /** Analyze a brand asset (PDF / image) → extracted BrandGuide. */
   extractBrandGuide(input: BrandExtractionInput): Promise<BrandExtractionResult>;
+
+  /**
+   * Interpret a free-text description into one structured brand-section
+   * field. Powers the per-section "적용" button.
+   */
+  interpretBrandSection(
+    input: BrandSectionInterpretInput,
+  ): Promise<BrandSectionInterpretResult>;
 
   /**
    * Enqueue a generation job. Returns id immediately — poll via getJob.

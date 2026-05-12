@@ -1,52 +1,44 @@
 "use client";
 
 import { useEffect } from "react";
+import { Loader2, X } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { PaletteSync } from "@/components/dashboard/palette-sync";
-import { BrandUploadZone } from "@/components/dashboard/brand-upload-zone";
-import { useJobsStore } from "@/lib/stores/jobs-store";
+import { BrandSectionUpload } from "@/components/dashboard/brand-upload-zone";
+import {
+  type BrandSectionImage,
+  type BrandSectionKind,
+  type BrandTextSectionKind,
+  useJobsStore,
+} from "@/lib/stores/jobs-store";
 import {
   koreanCompanion,
   loadBrandFontWithKorean,
   primaryFamily,
 } from "@/lib/font-loader";
-import type { BrandGuide } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export function BrandGuidePanel() {
   const brand = useJobsStore((s) => s.brand);
-  const upload = useJobsStore((s) => s.uploadAndExtract);
   const reset = useJobsStore((s) => s.resetBrand);
 
-  // Pull Google Fonts for the analyzed brand on the fly so the wordmark and
-  // typography preview render with the actual family — otherwise the browser
-  // silently falls back and every brand looks like Inter.
-  // Also pulls a Korean companion font for each Latin family, so 한글 본문도
-  // 브랜드 결을 따라간다 (Latin Google Fonts have no Korean glyphs).
+  // Load Google Fonts for whichever family the interpreter returned, so the
+  // typography preview swaps to the actual face — see comments in the
+  // original revision.
   useEffect(() => {
-    if (brand.status !== "ready") return;
-    const g = brand.result.brandGuide;
-    loadBrandFontWithKorean(g.logoWordmark?.family);
-    loadBrandFontWithKorean(g.typography.heading);
-    loadBrandFontWithKorean(g.typography.body);
-  }, [brand]);
+    const t = brand.guide.typography;
+    loadBrandFontWithKorean(t.heading);
+    loadBrandFontWithKorean(t.body);
+  }, [brand.guide.typography]);
 
   return (
     <aside className="flex flex-col gap-6 rounded-xl border border-border bg-surface-1 p-5 transition-colors duration-micro ease-lz hover:border-border-strong sm:p-6">
-      <Header
-        status={brand.status}
-        fileName={
-          brand.status === "idle" ? null : "fileName" in brand ? brand.fileName : null
-        }
-        onChange={brand.status === "ready" ? upload : undefined}
-      />
+      <Header status={brand.status} onReset={reset} />
 
-      {brand.status === "idle" && <IdleBody onUpload={upload} />}
-      {brand.status === "analyzing" && <AnalyzingBody />}
-      {brand.status === "error" && (
-        <ErrorBody message={brand.message} onReset={reset} />
-      )}
-      {brand.status === "ready" && <FilledBody guide={brand.result.brandGuide} />}
+      <LogoSection />
+      <PaletteSection />
+      <TypographySection />
+      <MoodSection />
     </aside>
   );
 }
@@ -55,57 +47,46 @@ export function BrandGuidePanel() {
 
 function Header({
   status,
-  fileName,
-  onChange,
+  onReset,
 }: {
-  status: "idle" | "analyzing" | "ready" | "error";
-  fileName: string | null;
-  onChange?: (file: File) => void;
+  status: "idle" | "ready";
+  onReset: () => void;
 }) {
   const title =
-    status === "ready"
-      ? "브랜드 가이드 적용됨"
-      : status === "analyzing"
-        ? "브랜드 자산 분석 중"
-        : status === "error"
-          ? "분석 실패"
-          : "브랜드 가이드 미적용";
+    status === "ready" ? "브랜드 가이드 적용됨" : "브랜드 가이드 미적용";
 
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="flex min-w-0 flex-col gap-1.5">
         <h2 className="font-kr text-h3 font-bold text-fg">{title}</h2>
-        {fileName && (
-          <div className="truncate font-mono text-meta text-fg-muted">
-            {fileName}
-          </div>
-        )}
+        <div className="font-kr text-meta text-fg-muted">
+          로고는 필수 · 컬러·타이포·무드는 설명하면 자동 적용
+        </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {(status === "ready" || status === "analyzing") && (
+        {status === "ready" ? (
           <span
             className={cn(
               "inline-flex items-center gap-2 rounded-pill bg-mint-soft px-[11px] py-[5px] text-[12px] text-mint",
             )}
           >
-            <StatusDot tone={status === "analyzing" ? "pending" : "active"} size={7} />
+            <StatusDot tone="active" size={7} />
             LIVE SYNC
           </span>
-        )}
-        {status === "error" && (
-          <span className="inline-flex items-center gap-2 rounded-pill border border-state-danger/40 px-[11px] py-[5px] text-[12px] text-state-danger">
-            <StatusDot tone="warning" size={7} />
-            오류
-          </span>
-        )}
-        {status === "idle" && (
+        ) : (
           <span className="inline-flex items-center gap-2 rounded-pill border border-border px-[11px] py-[5px] text-[12px] text-fg-muted">
             <StatusDot tone="idle" size={7} />
             대기
           </span>
         )}
-        {onChange && <BrandUploadZone compact onFile={onChange} />}
+        <button
+          type="button"
+          onClick={onReset}
+          className="rounded-pill border border-border bg-surface-2 px-2.5 py-1 font-kr text-[11px] text-fg-dim outline-none transition-colors hover:border-mint hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+        >
+          전체 초기화
+        </button>
       </div>
     </div>
   );
@@ -113,194 +94,164 @@ function Header({
 
 /* -------------------------------------------------------------------------- */
 
-function IdleBody({ onUpload }: { onUpload: (file: File) => void }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <BrandUploadZone onFile={onUpload} />
-      <ul className="flex flex-col gap-2 rounded-md bg-surface-2 px-4 py-3.5">
-        {[
-          "마스터 로고",
-          "컬러 팔레트",
-          "타이포그래피 시스템",
-          "무드 보드",
-        ].map((label) => (
-          <li
-            key={label}
-            className="flex items-center gap-2 font-kr text-meta text-fg-dim"
-          >
-            <span aria-hidden className="text-fg-faint">
-              →
-            </span>
-            <span>{label} 자동 추출</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-
-function AnalyzingBody() {
-  return (
-    <div className="flex flex-col gap-6">
-      <Skeleton h={104} label="마스터 로고" />
-      <Skeleton h={88} label="컬러 팔레트" />
-      <Skeleton h={120} label="타이포그래피 시스템" />
-      <Skeleton h={110} label="무드 참조" />
-    </div>
-  );
-}
-
-function Skeleton({ h, label }: { h: number; label: string }) {
-  return (
-    <div className="flex flex-col gap-2.5">
-      <div className="font-kr text-[11px] text-fg-muted">{label}</div>
-      <div
-        aria-hidden
-        className="animate-pulse rounded-md bg-surface-2"
-        style={{ height: h }}
-      />
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-
-function ErrorBody({
-  message,
-  onReset,
-}: {
-  message: string;
-  onReset: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-md border border-state-danger/30 bg-state-danger/5 px-5 py-6 text-center">
-      <div className="font-kr text-[13px] text-state-danger">{message}</div>
-      <button
-        type="button"
-        onClick={onReset}
-        className="rounded-md border border-border bg-surface-2 px-3.5 py-2 font-kr text-meta text-fg-dim outline-none transition-colors hover:bg-surface-3 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
-      >
-        다시 업로드
-      </button>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-
-function FilledBody({ guide }: { guide: BrandGuide }) {
-  return (
-    <>
-      <Section label="마스터 로고">
-        <LogoBlock guide={guide} />
-      </Section>
-      <Section label="컬러 팔레트">
-        <PaletteSync palette={guide.palette} />
-      </Section>
-      <Section label="타이포그래피 시스템">
-        <TypographyBlock typography={guide.typography} brandName={guide.brandName} />
-      </Section>
-      <Section label="무드 참조">
-        <MoodBlock guide={guide} />
-      </Section>
-    </>
-  );
-}
-
-function Section({
+function SectionShell({
   label,
+  required,
+  hint,
   children,
 }: {
   label: string;
+  required?: boolean;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="font-kr text-[11px] text-fg-muted">{label}</div>
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="font-kr text-[11px] text-fg-muted">
+          {label}
+          {required ? (
+            <span className="ml-1 text-state-danger">*</span>
+          ) : (
+            <span className="ml-1 text-fg-faint">(선택)</span>
+          )}
+        </div>
+        {hint && (
+          <div className="font-kr text-[10px] text-fg-faint">{hint}</div>
+        )}
+      </div>
       {children}
     </div>
   );
 }
 
-function LogoBlock({ guide }: { guide: BrandGuide }) {
-  if (guide.logoWordmark) {
-    const w = guide.logoWordmark;
-    // Flip the inset background when the wordmark itself is dark — otherwise
-    // black-on-near-black logos (e.g. CHANEL) disappear on the default surface.
-    const { bg, border } = pickLogoSurface(w.color);
-    const familyName = primaryFamily(w.family) ?? w.family;
-    const fontStack = `"${familyName}", var(--font-display), system-ui, sans-serif`;
-    return (
-      <div
-        className="flex justify-center rounded-md border py-7"
-        style={{ backgroundColor: bg, borderColor: border }}
-      >
-        <span
-          className="select-none"
-          style={{
-            fontFamily: fontStack,
-            fontSize: 32,
-            fontWeight: w.weight ?? 700,
-            color: w.color,
-            fontStyle: w.italic ? "italic" : "normal",
-            letterSpacing: `${w.tracking ?? -0.02}em`,
-          }}
-        >
-          {w.text}
-        </span>
-      </div>
-    );
-  }
-  // Image logos: we can't sniff their color cheaply, so default to a light
-  // surface (most brand-mark exports are dark ink on transparent backgrounds).
+/* -------------------------------------------------------------------------- */
+
+function LogoSection() {
+  const logo = useJobsStore((s) => s.brand.logo);
+  const upload = useJobsStore((s) => s.uploadBrandSectionImage);
+  const clear = useJobsStore((s) => s.clearBrandSectionImage);
+
   return (
-    <div className="flex justify-center rounded-md border border-border bg-[#F5F5F5] px-4 py-7">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={guide.logo} alt="brand logo" className="max-h-12 w-auto" />
+    <SectionShell label="마스터 로고" required>
+      {logo.image ? (
+        <ImagePreview
+          src={logo.image.objectUrl || logo.image.dataUrl}
+          fileName={logo.image.fileName}
+          onClear={() => clear("logo")}
+          height={104}
+          fit="contain"
+          bg="#F5F5F5"
+        />
+      ) : (
+        <BrandSectionUpload
+          label="로고 이미지 업로드"
+          onFile={(f) => upload("logo", f)}
+        />
+      )}
+    </SectionShell>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+function PaletteSection() {
+  const palette = useJobsStore((s) => s.brand.palette);
+  const upload = useJobsStore((s) => s.uploadBrandSectionImage);
+  const clear = useJobsStore((s) => s.clearBrandSectionImage);
+  const setText = useJobsStore((s) => s.setBrandSectionText);
+  const apply = useJobsStore((s) => s.applyBrandSection);
+
+  return (
+    <SectionShell
+      label="컬러 팔레트"
+      hint='예: "따뜻한 가을 톤" · "#E63946, #1D3557"'
+    >
+      <SectionImageRow
+        section="palette"
+        image={palette.image}
+        upload={upload}
+        clear={clear}
+      />
+
+      {palette.result.length > 0 ? (
+        <PaletteSync palette={palette.result} />
+      ) : (
+        <PaletteEmpty />
+      )}
+
+      <TextApplyRow
+        section="palette"
+        text={palette.text}
+        applied={palette.applied}
+        applying={palette.applying}
+        error={palette.error}
+        placeholder="컬러 분위기를 설명하거나 hex 코드를 입력하세요"
+        onChange={(v) => setText("palette", v)}
+        onApply={() => apply("palette")}
+      />
+    </SectionShell>
+  );
+}
+
+function PaletteEmpty() {
+  return (
+    <div className="flex h-[60px] items-center justify-center rounded-md border border-dashed border-border-strong/70 bg-surface-2 font-kr text-[11px] text-fg-faint">
+      컬러 분위기를 설명하고 적용을 누르세요
     </div>
   );
 }
 
-/**
- * Pick a logo-card surface that contrasts with the wordmark color.
- * Threshold tuned against the design's #0A0A0A canon — anything darker than
- * mid-gray flips to a light surface.
- */
-function pickLogoSurface(hex: string): { bg: string; border: string } {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
-  if (!m) return { bg: "#0A0A0A", border: "var(--border)" };
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 0xff;
-  const g = (n >> 8) & 0xff;
-  const b = n & 0xff;
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  if (luminance < 0.45) {
-    return { bg: "#F5F5F5", border: "rgba(0,0,0,0.08)" };
-  }
-  return { bg: "#0A0A0A", border: "var(--border)" };
+/* -------------------------------------------------------------------------- */
+
+function TypographySection() {
+  const typography = useJobsStore((s) => s.brand.typography);
+  const applied = useJobsStore((s) => s.brand.guide.typography);
+  const upload = useJobsStore((s) => s.uploadBrandSectionImage);
+  const clear = useJobsStore((s) => s.clearBrandSectionImage);
+  const setText = useJobsStore((s) => s.setBrandSectionText);
+  const apply = useJobsStore((s) => s.applyBrandSection);
+
+  return (
+    <SectionShell
+      label="타이포그래피 시스템"
+      hint='예: "고급스러운 세리프" · "Manrope"'
+    >
+      <SectionImageRow
+        section="typography"
+        image={typography.image}
+        upload={upload}
+        clear={clear}
+      />
+
+      <TypographyPreview heading={applied.heading} body={applied.body} />
+
+      <TextApplyRow
+        section="typography"
+        text={typography.text}
+        applied={typography.applied}
+        applying={typography.applying}
+        error={typography.error}
+        placeholder="원하는 타이포 톤을 설명하세요"
+        onChange={(v) => setText("typography", v)}
+        onApply={() => apply("typography")}
+      />
+    </SectionShell>
+  );
 }
 
-function TypographyBlock({
-  typography,
-  brandName,
+function TypographyPreview({
+  heading,
+  body,
 }: {
-  typography: BrandGuide["typography"];
-  brandName?: string;
+  heading: string;
+  body: string;
 }) {
-  // Single-typeface brand system: heading + body share the family, only weight
-  // and size differ. Google Fonts <link> is injected by BrandGuidePanel
-  // useEffect.
-  // Stack order: Latin brand face → Korean companion (matched by mood) →
-  // var(--font-display) → Pretendard. Browsers walk per-glyph: Latin glyphs
-  // hit the brand face, Hangul glyphs hit the companion (since Latin display
-  // fonts ship no 한글 glyphs at all), everything else falls through.
-  const familyName = primaryFamily(typography.heading) ?? typography.heading;
-  const koCompanion = koreanCompanion(typography.heading);
+  const familyName = primaryFamily(heading) ?? heading;
+  const ko = koreanCompanion(heading);
   const fontStack = [
     `"${familyName}"`,
-    koCompanion ? `"${koCompanion}"` : null,
+    ko ? `"${ko}"` : null,
     "var(--font-display)",
     "var(--font-kr)",
     "system-ui",
@@ -315,13 +266,13 @@ function TypographyBlock({
         className="text-[9px] uppercase text-fg-muted"
         style={{ letterSpacing: "0.08em" }}
       >
-        HEADING / {familyName.toUpperCase()} BOLD
+        HEADING / {(familyName ?? "").toUpperCase()} BOLD
       </div>
       <div
         className="text-h3 font-bold text-fg"
         style={{ fontFamily: fontStack }}
       >
-        {brandName ?? "Brand System"}
+        Brand System
       </div>
       <div
         className="text-[11px] text-fg-muted"
@@ -329,14 +280,12 @@ function TypographyBlock({
       >
         Aa Bb Cc · 1234567890
       </div>
-
       <div aria-hidden className="my-2 h-px bg-border" />
-
       <div
         className="text-[9px] uppercase text-fg-muted"
         style={{ letterSpacing: "0.08em" }}
       >
-        BODY / {familyName.toUpperCase()} REGULAR
+        BODY / {(primaryFamily(body) ?? body).toUpperCase()} REGULAR
       </div>
       <div
         className="text-[13px] leading-[1.5] text-fg"
@@ -348,15 +297,58 @@ function TypographyBlock({
         className="text-[12px] leading-[1.5] text-fg-dim"
         style={{ fontFamily: fontStack }}
       >
-        크리에이티브 제작의 미래는 에이전틱하고 정밀하며 시각적으로 완벽합니다.
+        크리에이티브 제작의 미래는 에이전틱하고 정밀합니다.
       </div>
     </div>
   );
 }
 
-function MoodBlock({ guide }: { guide: BrandGuide }) {
-  const hasImage = guide.moodboard.length > 0;
-  const palette = guide.palette;
+/* -------------------------------------------------------------------------- */
+
+function MoodSection() {
+  const mood = useJobsStore((s) => s.brand.mood);
+  const palette = useJobsStore((s) => s.brand.guide.palette);
+  const upload = useJobsStore((s) => s.uploadBrandSectionImage);
+  const clear = useJobsStore((s) => s.clearBrandSectionImage);
+  const setText = useJobsStore((s) => s.setBrandSectionText);
+  const apply = useJobsStore((s) => s.applyBrandSection);
+
+  return (
+    <SectionShell label="무드 참조" hint='예: "한국적 정서와 모던한 감각"'>
+      <SectionImageRow
+        section="mood"
+        image={mood.image}
+        upload={upload}
+        clear={clear}
+      />
+      <MoodPreview
+        imageUrl={mood.image?.objectUrl ?? mood.image?.dataUrl ?? null}
+        caption={mood.result}
+        palette={palette}
+      />
+      <TextApplyRow
+        section="mood"
+        text={mood.text}
+        applied={mood.applied}
+        applying={mood.applying}
+        error={mood.error}
+        placeholder="브랜드 무드를 설명하세요"
+        onChange={(v) => setText("mood", v)}
+        onApply={() => apply("mood")}
+      />
+    </SectionShell>
+  );
+}
+
+function MoodPreview({
+  imageUrl,
+  caption,
+  palette,
+}: {
+  imageUrl: string | null;
+  caption: string;
+  palette: { hex: string; name?: string }[];
+}) {
   const fallbackGrad =
     palette.length >= 2
       ? `linear-gradient(135deg, ${palette[0].hex}33 0%, ${palette[1].hex}1F 50%, ${palette[palette.length - 1].hex}40 100%), linear-gradient(135deg, #0c1714 0%, #142822 50%, #0a1410 100%)`
@@ -366,8 +358,8 @@ function MoodBlock({ guide }: { guide: BrandGuide }) {
     <div
       className="relative flex h-[110px] flex-col items-center justify-center gap-1 overflow-hidden rounded-md"
       style={{
-        background: hasImage
-          ? `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${guide.moodboard[0]})`
+        background: imageUrl
+          ? `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${imageUrl})`
           : fallbackGrad,
         backgroundSize: "cover",
         backgroundPosition: "center",
@@ -386,8 +378,152 @@ function MoodBlock({ guide }: { guide: BrandGuide }) {
         className="font-display text-[22px] font-bold text-fg"
         style={{ letterSpacing: "0.02em" }}
       >
-        {guide.moodCaption ?? "BRAND MOOD"}
+        {caption || "BRAND MOOD"}
       </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Shared building blocks                                                     */
+/* -------------------------------------------------------------------------- */
+
+function SectionImageRow({
+  section,
+  image,
+  upload,
+  clear,
+}: {
+  section: BrandSectionKind;
+  image: BrandSectionImage | null;
+  upload: (s: BrandSectionKind, f: File) => Promise<void>;
+  clear: (s: BrandSectionKind) => void;
+}) {
+  if (image) {
+    return (
+      <ImagePreview
+        src={image.objectUrl || image.dataUrl}
+        fileName={image.fileName}
+        onClear={() => clear(section)}
+        height={88}
+        fit="cover"
+      />
+    );
+  }
+  return (
+    <BrandSectionUpload
+      label="이미지 업로드"
+      onFile={(f) => upload(section, f)}
+      compact
+    />
+  );
+}
+
+function ImagePreview({
+  src,
+  fileName,
+  onClear,
+  height,
+  fit,
+  bg,
+}: {
+  src: string;
+  fileName: string;
+  onClear: () => void;
+  height: number;
+  fit: "cover" | "contain";
+  bg?: string;
+}) {
+  return (
+    <div
+      className="group relative flex items-center justify-center overflow-hidden rounded-md border border-border"
+      style={{ height, backgroundColor: bg }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={fileName}
+        className="h-full w-full"
+        style={{ objectFit: fit }}
+      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent px-2.5 py-1.5">
+        <span className="truncate font-mono text-[10px] text-white/80">
+          {fileName}
+        </span>
+        <button
+          type="button"
+          onClick={onClear}
+          aria-label={`${fileName} 제거`}
+          className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-pill bg-black/40 text-white outline-none transition-colors hover:bg-state-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mint"
+        >
+          <X className="h-3 w-3" strokeWidth={2.2} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TextApplyRow({
+  section,
+  text,
+  applied,
+  applying,
+  error,
+  placeholder,
+  onChange,
+  onApply,
+}: {
+  section: BrandTextSectionKind;
+  text: string;
+  applied: string;
+  applying: boolean;
+  error: string | null;
+  placeholder: string;
+  onChange: (text: string) => void;
+  onApply: () => void;
+}) {
+  const trimmed = text.trim();
+  // "dirty" = there's a draft worth applying. Empty input or one already
+  // matching the last applied value disables the button.
+  const dirty = trimmed.length > 0 && trimmed !== applied;
+  const canApply = dirty && !applying;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-stretch gap-2">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && canApply) {
+              e.preventDefault();
+              onApply();
+            }
+          }}
+          placeholder={placeholder}
+          disabled={applying}
+          aria-label={`${section} 텍스트 입력`}
+          className="min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-kr text-[12px] text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-mint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint disabled:opacity-60"
+        />
+        <button
+          type="button"
+          disabled={!canApply}
+          onClick={onApply}
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 font-kr text-[12px] font-semibold outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint",
+            canApply
+              ? "bg-mint text-bg hover:bg-mint-hover"
+              : "cursor-not-allowed bg-surface-3 text-fg-faint",
+          )}
+        >
+          {applying && <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2.2} />}
+          {applying ? "적용 중" : "적용"}
+        </button>
+      </div>
+      {error && (
+        <div className="font-kr text-[11px] text-state-danger">{error}</div>
+      )}
     </div>
   );
 }

@@ -50,7 +50,7 @@ export function DashboardClient() {
         references,
         market: data.market,
         brandMessage: data.brandMessage,
-        brandGuide: brand.result.brandGuide,
+        brandGuide: brand.guide,
         assetTypes: data.assetTypes,
         styleShotSettings: data.styleShotSettings,
         shortVideoSettings: data.shortVideoSettings,

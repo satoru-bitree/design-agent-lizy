@@ -28,6 +28,22 @@ export type BrandExtractionResult = {
 };
 
 /**
+ * Natural-language → structured brand-section data. Used by the per-section
+ * "적용" flow on the brand-guide panel — the user describes the section in
+ * Korean/English ("따뜻한 가을 톤", "luxury serif"), the provider returns
+ * the matching palette / typography / caption.
+ */
+export type BrandSectionInterpretInput =
+  | { section: "palette"; text: string }
+  | { section: "typography"; text: string }
+  | { section: "mood"; text: string };
+
+export type BrandSectionInterpretResult =
+  | { section: "palette"; palette: { hex: string; name?: string }[] }
+  | { section: "typography"; typography: { heading: string; body: string } }
+  | { section: "mood"; moodCaption: string };
+
+/**
  * Preset choices for style-shot generation. The user picks at most one;
  * `additionalRequest` carries any free-text instruction layered on top.
  * `ai_recommended` lets the provider pick a style based on brand/market.

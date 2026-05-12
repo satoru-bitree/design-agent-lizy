@@ -18,6 +18,8 @@ import {
   SHORT_VIDEO_CONCEPTS,
   type BrandExtractionInput,
   type BrandExtractionResult,
+  type BrandSectionInterpretInput,
+  type BrandSectionInterpretResult,
   type GenerationInput,
   type Job,
   type JobKind,
@@ -516,6 +518,46 @@ class FalProvider implements AIProvider {
       // Vision LLM hiccup → graceful fallback.
       console.error("[fal] extractBrandGuide failed:", e);
       return mockProvider.extractBrandGuide(input);
+    }
+  }
+
+  async interpretBrandSection(
+    input: BrandSectionInterpretInput,
+  ): Promise<BrandSectionInterpretResult> {
+    if (!FAL_KEY) return mockProvider.interpretBrandSection(input);
+
+    try {
+      const { systemPrompt, userPrompt } = sectionPrompt(input);
+      // fal-ai/any-llm is a text-only chat endpoint that takes a model name +
+      // prompt and returns { output: string }. Gemini Flash is cheap and
+      // small (good enough for a 3-color palette + caption) — bump to a
+      // bigger model if hallucination becomes a problem.
+      const result = await fal.subscribe("fal-ai/any-llm", {
+        input: {
+          model: "google/gemini-2.0-flash-001",
+          prompt: userPrompt,
+          system_prompt: systemPrompt,
+        },
+      });
+      const data = result.data as
+        | { output?: string; error?: string | null }
+        | undefined;
+      if (data?.error) {
+        console.warn("[fal] interpretBrandSection model error:", data.error);
+        return mockProvider.interpretBrandSection(input);
+      }
+      const text = data?.output ?? "";
+      const parsed = parseSectionJson(input.section, text);
+      if (parsed) return parsed;
+      // Malformed JSON → fall back to mock so the user is never blocked.
+      console.warn(
+        "[fal] interpretBrandSection: malformed JSON, falling back. raw:",
+        text.slice(0, 200),
+      );
+      return mockProvider.interpretBrandSection(input);
+    } catch (e) {
+      console.error("[fal] interpretBrandSection failed:", e);
+      return mockProvider.interpretBrandSection(input);
     }
   }
 
@@ -1280,6 +1322,137 @@ function numClamp(v: unknown, fallback: number): number {
   const n = Number(v);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(1, n));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Brand-section natural-language interpretation                              */
+/* -------------------------------------------------------------------------- */
+
+const SECTION_SYSTEM =
+  "You translate free-form Korean or English brand briefs into structured JSON for a single brand section. Respond with JSON only — no prose, no markdown, no code fences.";
+
+function sectionPrompt(input: BrandSectionInterpretInput): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  if (input.section === "palette") {
+    return {
+      systemPrompt: SECTION_SYSTEM,
+      userPrompt: [
+        `User brief: "${input.text}"`,
+        "",
+        "Return STRICT JSON:",
+        '{ "palette": [ { "hex": "#RRGGBB", "name": "string" } ] }',
+        "",
+        "Rules:",
+        "- EXACTLY 3 colors, ordered most → least dominant for the described mood.",
+        "- All hex values uppercase #RRGGBB (7 chars).",
+        "- name is a short evocative English label (≤ 14 chars), Title Case.",
+        "- If the user listed explicit hex codes in the brief, use them verbatim (still cap at 3, ordered as given).",
+        "JSON only.",
+      ].join("\n"),
+    };
+  }
+  if (input.section === "typography") {
+    return {
+      systemPrompt: SECTION_SYSTEM,
+      userPrompt: [
+        `User brief: "${input.text}"`,
+        "",
+        "Return STRICT JSON:",
+        '{ "typography": { "heading": "string", "body": "string" } }',
+        "",
+        "Rules:",
+        "- heading and body MUST be picked from this Google Fonts allowlist (bare family name, no quotes, no fallback):",
+        `  ${BRAND_FONT_ALLOWLIST.join(", ")}`,
+        "- This brand uses ONE typeface system — set heading and body to the SAME family unless the user explicitly asked for a pair.",
+        "- Pick the closest visual match to the described tone (e.g. luxury → 'Bodoni Moda', tech → 'Inter', heritage → 'Playfair Display').",
+        "JSON only.",
+      ].join("\n"),
+    };
+  }
+  // mood
+  return {
+    systemPrompt: SECTION_SYSTEM,
+    userPrompt: [
+      `User brief: "${input.text}"`,
+      "",
+      "Return STRICT JSON:",
+      '{ "moodCaption": "string" }',
+      "",
+      "Rules:",
+      "- moodCaption is ≤ 24 characters, ALL CAPS English, an evocative phrase that captures the brand mood.",
+      "- Examples: 'FRESH ESSENCE', 'ARTISAN HERITAGE', 'DIGITAL CLARITY', 'QUIET LUXURY'.",
+      "JSON only.",
+    ].join("\n"),
+  };
+}
+
+function snapAllowlist(family: string): string | null {
+  const want = family.trim().toLowerCase();
+  if (!want) return null;
+  const hit = BRAND_FONT_ALLOWLIST.find((f) => f.toLowerCase() === want);
+  return hit ?? null;
+}
+
+function parseSectionJson(
+  section: BrandSectionInterpretInput["section"],
+  raw: string,
+): BrandSectionInterpretResult | null {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const o = parsed as Record<string, unknown>;
+
+  if (section === "palette") {
+    const arr = Array.isArray(o.palette) ? o.palette : [];
+    const palette = arr
+      .filter(
+        (p): p is Record<string, unknown> =>
+          !!p &&
+          typeof p === "object" &&
+          typeof (p as { hex?: unknown }).hex === "string" &&
+          /^#[0-9a-fA-F]{6}$/.test((p as { hex: string }).hex),
+      )
+      .map((p) => ({
+        hex: (p.hex as string).toUpperCase(),
+        name:
+          typeof p.name === "string" && (p.name as string).length > 0
+            ? (p.name as string).slice(0, 24)
+            : undefined,
+      }))
+      .slice(0, 5);
+    if (palette.length === 0) return null;
+    return { section: "palette", palette };
+  }
+  if (section === "typography") {
+    const t = o.typography as Record<string, unknown> | undefined;
+    if (!t || typeof t.heading !== "string" || typeof t.body !== "string") {
+      return null;
+    }
+    // LLMs occasionally hallucinate fonts outside the allowlist (e.g.
+    // "Noto Sans KR", "SF Pro"). Snap to the closest allowlist match — and
+    // if there's no match at all, reject so the caller falls through to
+    // the mock preset rather than feeding an unloadable family downstream.
+    const heading = snapAllowlist(t.heading);
+    const body = snapAllowlist(t.body) ?? heading;
+    if (!heading) return null;
+    return {
+      section: "typography",
+      typography: { heading, body: body ?? heading },
+    };
+  }
+  if (typeof o.moodCaption !== "string") return null;
+  const caption = (o.moodCaption as string).toUpperCase().slice(0, 24);
+  if (!caption) return null;
+  return { section: "mood", moodCaption: caption };
 }
 
 export const falProvider: AIProvider = new FalProvider();

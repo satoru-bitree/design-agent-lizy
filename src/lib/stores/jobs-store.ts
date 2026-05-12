@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type {
-  BrandExtractionResult,
+  BrandSectionInterpretResult,
   GenerationInput,
   Job,
   JobVariant,
@@ -21,26 +21,112 @@ import type {
 /* Brand state                                                                */
 /* -------------------------------------------------------------------------- */
 
-export type BrandState =
-  | { status: "idle" }
-  | {
-      status: "analyzing";
-      fileName: string;
-      fileSize: number;
-      objectUrl: string;
-    }
-  | {
-      status: "ready";
-      fileName: string;
-      fileSize: number;
-      objectUrl: string;
-      result: BrandExtractionResult;
-    }
-  | {
-      status: "error";
-      fileName: string;
-      message: string;
-    };
+export type BrandSectionKind = "logo" | "palette" | "typography" | "mood";
+export type BrandTextSectionKind = Exclude<BrandSectionKind, "logo">;
+
+export type BrandSectionImage = {
+  fileName: string;
+  fileSize: number;
+  /** Browser-only blob URL — for preview. Stripped on persist. */
+  objectUrl: string;
+  /** Base64 dataURL — applied into the BrandGuide so generation can ship it. Stripped on persist. */
+  dataUrl: string;
+};
+
+export type BrandLogoSection = {
+  image: BrandSectionImage | null;
+};
+
+/**
+ * Generic text-section state. Each text section carries:
+ *   - the user's live text draft
+ *   - the last text the user pressed "적용" on (for dirty detection)
+ *   - the structured `result` returned by interpretBrandSection (drives the guide)
+ *   - applying / error flags for UI feedback
+ *
+ * The `R` type parameter is the section's structured result shape.
+ */
+export type BrandTextSection<R> = {
+  image: BrandSectionImage | null;
+  text: string;
+  applied: string;
+  result: R;
+  applying: boolean;
+  error: string | null;
+};
+
+export type BrandPaletteSection = BrandTextSection<
+  { hex: string; name?: string }[]
+>;
+export type BrandTypographySection = BrandTextSection<{
+  heading: string;
+  body: string;
+} | null>;
+export type BrandMoodSection = BrandTextSection<string>;
+
+/**
+ * Brand state — four independent sections built up incrementally.
+ * `status` is "ready" iff a logo image is present.
+ */
+export type BrandState = {
+  status: "idle" | "ready";
+  logo: BrandLogoSection;
+  palette: BrandPaletteSection;
+  typography: BrandTypographySection;
+  mood: BrandMoodSection;
+  /** Derived from sections on every mutation. */
+  guide: BrandGuide;
+};
+
+const EMPTY_GUIDE: BrandGuide = {
+  logo: "",
+  palette: [],
+  typography: { heading: "Inter", body: "Inter" },
+  moodboard: [],
+};
+
+const INITIAL_BRAND: BrandState = {
+  status: "idle",
+  logo: { image: null },
+  palette: {
+    image: null,
+    text: "",
+    applied: "",
+    result: [],
+    applying: false,
+    error: null,
+  },
+  typography: {
+    image: null,
+    text: "",
+    applied: "",
+    result: null,
+    applying: false,
+    error: null,
+  },
+  mood: {
+    image: null,
+    text: "",
+    applied: "",
+    result: "",
+    applying: false,
+    error: null,
+  },
+  guide: EMPTY_GUIDE,
+};
+
+function deriveGuide(
+  next: Pick<BrandState, "logo" | "palette" | "typography" | "mood">,
+): BrandGuide {
+  const moodboard = next.mood.image ? [next.mood.image.dataUrl] : [];
+  return {
+    logo: next.logo.image?.dataUrl ?? "",
+    palette: next.palette.result,
+    typography: next.typography.result ?? EMPTY_GUIDE.typography,
+    moodboard,
+    ...(next.mood.result ? { moodCaption: next.mood.result } : {}),
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /* Generation state                                                           */
@@ -127,7 +213,21 @@ export type AssetView =
 
 type Store = {
   brand: BrandState;
-  uploadAndExtract: (file: File) => Promise<void>;
+  /** Upload an image into a specific section. Logo upload flips status to "ready". */
+  uploadBrandSectionImage: (
+    section: BrandSectionKind,
+    file: File,
+  ) => Promise<void>;
+  /** Update the working text on a section (not yet applied). */
+  setBrandSectionText: (section: BrandTextSectionKind, text: string) => void;
+  /**
+   * Run the section's working text through the AI interpreter (natural
+   * language → structured BrandGuide field). Resolves once the call lands.
+   */
+  applyBrandSection: (section: BrandTextSectionKind) => Promise<void>;
+  /** Drop the image from a section. Clearing logo drops status back to "idle". */
+  clearBrandSectionImage: (section: BrandSectionKind) => void;
+  /** Reset all four sections. */
   resetBrand: () => void;
 
   generationProjects: Record<string, GenerationProject>;
@@ -157,85 +257,127 @@ function makeProjectId(): string {
 export const useJobsStore = create<Store>()(
   persist(
     (set, get) => ({
-      brand: { status: "idle" },
+      brand: INITIAL_BRAND,
 
-      uploadAndExtract: async (file: File) => {
-        const prev = get().brand;
-        if ("objectUrl" in prev && prev.objectUrl) {
-          URL.revokeObjectURL(prev.objectUrl);
-        }
-
+      uploadBrandSectionImage: async (
+        section: BrandSectionKind,
+        file: File,
+      ) => {
+        // We need a base64 dataUrl so the image can ride along in the
+        // BrandGuide on /api/jobs requests — fal/nemotron can't reach our
+        // browser blob: URLs. compressImageFile downscales any source to
+        // ~1536px JPEG so the persisted state stays bearable.
+        const dataUrl = await compressImageFile(file);
         const objectUrl = URL.createObjectURL(file);
-        set({
-          brand: {
-            status: "analyzing",
+
+        set((state) => {
+          const prev = state.brand[section];
+          if (prev.image?.objectUrl) URL.revokeObjectURL(prev.image.objectUrl);
+
+          const image: BrandSectionImage = {
             fileName: file.name,
             fileSize: file.size,
             objectUrl,
-          },
+            dataUrl,
+          };
+
+          const nextSections =
+            section === "logo"
+              ? { ...state.brand, logo: { image } }
+              : { ...state.brand, [section]: { ...prev, image } };
+
+          return {
+            brand: {
+              ...nextSections,
+              status: nextSections.logo.image ? "ready" : "idle",
+              guide: deriveGuide(nextSections),
+            },
+          };
         });
+      },
+
+      setBrandSectionText: (section, text) => {
+        set((state) => ({
+          brand: {
+            ...state.brand,
+            [section]: { ...state.brand[section], text, error: null },
+          },
+        }));
+      },
+
+      applyBrandSection: async (section) => {
+        const draft = get().brand[section].text.trim();
+        if (!draft) return;
+
+        // Flip applying=true synchronously so the button shows a spinner
+        // immediately. error is cleared here too.
+        set((state) => ({
+          brand: {
+            ...state.brand,
+            [section]: {
+              ...state.brand[section],
+              applying: true,
+              error: null,
+            },
+          },
+        }));
 
         try {
-          // Only PNG/JPEG can be sent to the vision LLM directly.
-          // PDF/SVG falls through with no dataUrl → server uses mock fixtures.
-          // compressImageFile resizes + re-encodes as JPEG so we don't ship
-          // a 10MB phone photo through the JSON body.
-          const imageDataUrl =
-            file.type === "image/png" ||
-            file.type === "image/jpeg" ||
-            file.type === "image/jpg"
-              ? await compressImageFile(file)
-              : undefined;
-
-          const res = await fetch("/api/brand/extract", {
+          const res = await fetch("/api/brand/interpret", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fileName: file.name,
-              fileSize: file.size,
-              mimeType: file.type,
-              imageDataUrl,
-            }),
+            body: JSON.stringify({ section, text: draft }),
           });
-
           if (!res.ok) {
             const err = (await res.json().catch(() => null)) as {
               message?: string;
             } | null;
-            throw new Error(err?.message ?? "분석에 실패했습니다.");
+            throw new Error(err?.message ?? "해석에 실패했습니다.");
           }
-
-          const result = (await res.json()) as BrandExtractionResult;
-
-          set({
-            brand: {
-              status: "ready",
-              fileName: file.name,
-              fileSize: file.size,
-              objectUrl,
-              result,
-            },
-          });
+          const data = (await res.json()) as BrandSectionInterpretResult;
+          applyInterpretResult(set, section, draft, data);
         } catch (e) {
           const message =
-            e instanceof Error ? e.message : "분석에 실패했습니다.";
-          URL.revokeObjectURL(objectUrl);
-          set({
+            e instanceof Error ? e.message : "해석에 실패했습니다.";
+          set((state) => ({
             brand: {
-              status: "error",
-              fileName: file.name,
-              message,
+              ...state.brand,
+              [section]: {
+                ...state.brand[section],
+                applying: false,
+                error: message,
+              },
             },
-          });
+          }));
         }
+      },
+
+      clearBrandSectionImage: (section) => {
+        set((state) => {
+          const cur = state.brand[section];
+          if (cur.image?.objectUrl) URL.revokeObjectURL(cur.image.objectUrl);
+
+          const nextSections =
+            section === "logo"
+              ? { ...state.brand, logo: { image: null } }
+              : { ...state.brand, [section]: { ...cur, image: null } };
+          return {
+            brand: {
+              ...nextSections,
+              status: nextSections.logo.image ? "ready" : "idle",
+              guide: deriveGuide(nextSections),
+            },
+          };
+        });
       },
 
       resetBrand: () => {
         const cur = get().brand;
-        if ("objectUrl" in cur && cur.objectUrl) {
-          URL.revokeObjectURL(cur.objectUrl);
+        for (const k of ["logo", "palette", "typography", "mood"] as const) {
+          const img = cur[k].image;
+          if (img?.objectUrl) URL.revokeObjectURL(img.objectUrl);
         }
-        set({ brand: { status: "idle" } });
+        set({ brand: INITIAL_BRAND });
       },
 
       generationProjects: {},
@@ -449,23 +591,43 @@ export const useJobsStore = create<Store>()(
     }),
     {
       name: "lizy-jobs-store",
-      version: 1,
+      // Bumps:
+      //   v2 — brand shape changed from { status, result } to per-section + guide
+      //   v3 — text sections gained `result/applying/error` fields, so a v2
+      //        persisted state still crashes (`palette.result.length` on undefined).
+      // Anything < v3 resets the brand slice on load.
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       // Manual rehydrate via <StoreRehydrate /> to avoid SSR mismatch.
       skipHydration: true,
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as Partial<{
+          brand: unknown;
+          generationProjects: Store["generationProjects"];
+          jobs: Store["jobs"];
+        }>;
+        const brand = p.brand as Record<string, unknown> | null | undefined;
+        const palette = brand?.palette as Record<string, unknown> | undefined;
+        const isCurrent =
+          version >= 3 &&
+          !!brand &&
+          "guide" in brand &&
+          !!palette &&
+          "result" in palette;
+        return {
+          ...p,
+          brand: isCurrent ? (brand as unknown as BrandState) : INITIAL_BRAND,
+        } as Partial<Store>;
+      },
       // ObjectURLs die at refresh — strip them. Brand non-ready states reset
       // to idle (analyzing/error are mid-flight states, no value preserving).
       partialize: (state) => ({
-        brand:
-          state.brand.status === "ready"
-            ? {
-                status: "ready" as const,
-                fileName: state.brand.fileName,
-                fileSize: state.brand.fileSize,
-                objectUrl: "",
-                result: state.brand.result,
-              }
-            : { status: "idle" as const },
+        // Strip image blobs (objectUrl dies at refresh; dataUrl is too large
+        // to persist comfortably). Text drafts and applied values DO survive,
+        // so a user who typed colors/typography/mood doesn't lose them on
+        // refresh — they'll just need to re-upload the logo to flip back to
+        // "ready".
+        brand: stripBrandImages(state.brand),
         generationProjects: Object.fromEntries(
           Object.entries(state.generationProjects).map(([id, p]) => [
             id,
@@ -500,6 +662,87 @@ export const useJobsStore = create<Store>()(
 // re-exported cleanly — we pin the slice types we touch here.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Setter = (partial: any) => void;
+
+/**
+ * Patch a section with its interpreted result, mark applied=draft, drop
+ * applying/error, and rederive the brand guide. Section-typed so the result
+ * shape matches the section's `result` slot exactly.
+ */
+function applyInterpretResult(
+  set: Setter,
+  section: BrandTextSectionKind,
+  draft: string,
+  data: BrandSectionInterpretResult,
+): void {
+  set((state: { brand: BrandState }) => {
+    const brand = state.brand;
+    let nextBrand: BrandState;
+    if (section === "palette" && data.section === "palette") {
+      nextBrand = {
+        ...brand,
+        palette: {
+          ...brand.palette,
+          applied: draft,
+          result: data.palette,
+          applying: false,
+          error: null,
+        },
+      };
+    } else if (section === "typography" && data.section === "typography") {
+      nextBrand = {
+        ...brand,
+        typography: {
+          ...brand.typography,
+          applied: draft,
+          result: data.typography,
+          applying: false,
+          error: null,
+        },
+      };
+    } else if (section === "mood" && data.section === "mood") {
+      nextBrand = {
+        ...brand,
+        mood: {
+          ...brand.mood,
+          applied: draft,
+          result: data.moodCaption,
+          applying: false,
+          error: null,
+        },
+      };
+    } else {
+      // Shape mismatch between request and response — leave state untouched
+      // (caller will surface a generic error via the catch).
+      return state;
+    }
+    return { brand: { ...nextBrand, guide: deriveGuide(nextBrand) } };
+  });
+}
+
+function stripBrandImages(brand: BrandState): BrandState {
+  // Drop image blobs/dataUrls (too transient/large to persist). applying
+  // resets to false — a half-fired apply doesn't survive refresh. error too.
+  const stripped: BrandState = {
+    status: "idle",
+    logo: { image: null },
+    palette: {
+      ...brand.palette,
+      image: null,
+      applying: false,
+      error: null,
+    },
+    typography: {
+      ...brand.typography,
+      image: null,
+      applying: false,
+      error: null,
+    },
+    mood: { ...brand.mood, image: null, applying: false, error: null },
+    guide: EMPTY_GUIDE,
+  };
+  stripped.guide = deriveGuide(stripped);
+  return stripped;
+}
 
 /**
  * Fire one /api/jobs POST for a given kind and patch the result back into the

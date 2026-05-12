@@ -135,12 +135,7 @@ export function AssetUploadForm({
         ]
       : []),
     {
-      label:
-        brandStatus === "analyzing"
-          ? "브랜드 가이드 (분석 중)"
-          : brandStatus === "error"
-            ? "브랜드 가이드 (재업로드 필요)"
-            : "브랜드 가이드",
+      label: "브랜드 가이드",
       done: brandStatus === "ready",
     },
   ];
@@ -195,22 +190,11 @@ export function AssetUploadForm({
     });
   };
 
-  const statusToneForFooter =
-    brandStatus === "ready"
-      ? "active"
-      : brandStatus === "analyzing"
-        ? "pending"
-        : brandStatus === "error"
-          ? "warning"
-          : "idle";
+  const statusToneForFooter = brandStatus === "ready" ? "active" : "idle";
   const statusLabelForFooter =
     brandStatus === "ready"
       ? "샘플 에이전트: 준비 완료"
-      : brandStatus === "analyzing"
-        ? "샘플 에이전트: 브랜드 분석 중"
-        : brandStatus === "error"
-          ? "샘플 에이전트: 브랜드 분석 실패"
-          : "샘플 에이전트: 대기 중";
+      : "샘플 에이전트: 대기 중";
 
   return (
     <div className="flex flex-col gap-6">
