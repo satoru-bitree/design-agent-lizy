@@ -1142,7 +1142,23 @@ class FalProvider implements AIProvider {
         startedAt,
       };
     } catch (e) {
-      const message = e instanceof Error ? e.message : "fal.queue.status failed";
+      const err = e as { message?: string; status?: number; body?: unknown };
+      const detail =
+        err.body !== undefined
+          ? typeof err.body === "string"
+            ? err.body
+            : JSON.stringify(err.body)
+          : undefined;
+      console.error("[fal] getJob error", {
+        jobId,
+        kind: parsed.kind,
+        message: err.message,
+        status: err.status,
+        body: err.body,
+      });
+      const message = detail
+        ? `${err.message ?? "fal.queue.status failed"} — ${detail}`
+        : (err.message ?? "fal.queue.status failed");
       return {
         id: jobId,
         kind: parsed.kind,
@@ -1232,8 +1248,23 @@ class FalProvider implements AIProvider {
         startedAt,
       };
     } catch (e) {
-      const message =
-        e instanceof Error ? e.message : "fal.queue.status (dual pair) failed";
+      const err = e as { message?: string; status?: number; body?: unknown };
+      const detail =
+        err.body !== undefined
+          ? typeof err.body === "string"
+            ? err.body
+            : JSON.stringify(err.body)
+          : undefined;
+      console.error("[fal] getStyleShotDualJob error", {
+        jobId,
+        preset,
+        message: err.message,
+        status: err.status,
+        body: err.body,
+      });
+      const message = detail
+        ? `${err.message ?? "fal.queue.status (dual pair) failed"} — ${detail}`
+        : (err.message ?? "fal.queue.status (dual pair) failed");
       return {
         id: jobId,
         kind: "style_shot",

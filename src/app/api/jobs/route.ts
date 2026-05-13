@@ -40,11 +40,28 @@ export async function POST(req: Request) {
     );
     return NextResponse.json({ jobId, uploads });
   } catch (e) {
+    // fal-ai/client wraps non-2xx responses in ApiError whose `message` is only
+    // the HTTP status text (e.g. "Unprocessable Entity"). Validation details
+    // live on `body` / `status`. Surface both so server logs and the client
+    // toast can show what fal actually rejected.
+    const err = e as { message?: string; status?: number; body?: unknown };
+    const detail =
+      err.body !== undefined
+        ? typeof err.body === "string"
+          ? err.body
+          : JSON.stringify(err.body)
+        : undefined;
+    console.error("[api/jobs] startGeneration failed:", {
+      kind: body.kind,
+      message: err.message,
+      status: err.status,
+      body: err.body,
+    });
+    const message = detail
+      ? `${err.message ?? "생성 요청 실패"} — ${detail}`
+      : (err.message ?? "생성 요청 실패");
     return NextResponse.json(
-      {
-        code: "GENERATION_FAILED",
-        message: e instanceof Error ? e.message : "생성 요청 실패",
-      },
+      { code: "GENERATION_FAILED", message },
       { status: 500 },
     );
   }
