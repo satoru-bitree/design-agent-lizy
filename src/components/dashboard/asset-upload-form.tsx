@@ -126,6 +126,19 @@ export function AssetUploadForm({
   const checklist: { label: string; done: boolean }[] = [
     { label: "제품 이미지", done: !!file },
     { label: "에셋 유형 1개 이상", done: assetTypes.size > 0 },
+    ...(assetTypes.has("style_shot")
+      ? [
+          { label: "스타일샷 연출", done: styleShotPreset !== null },
+          ...(styleShotPreset === "custom"
+            ? [
+                {
+                  label: "스타일샷 프롬프트",
+                  done: styleShotRequest.trim().length > 0,
+                },
+              ]
+            : []),
+        ]
+      : []),
     ...(assetTypes.has("short_video")
       ? [
           {
@@ -151,18 +164,17 @@ export function AssetUploadForm({
         filteredRefs[t] = referenceFiles[t];
       }
     }
-    // Strip style-shot settings entirely if user didn't pick a preset *and*
-    // didn't write anything — keeps GenerationInput tidy and lets providers
-    // fall back to default behavior.
+    // Style-shot: preset is required (checklist gate ensures it's non-null).
+    // additionalRequest is only meaningful for "custom" mode — for
+    // styling_props and usage_scene the master prompts are self-contained.
     const trimmedRequest = styleShotRequest.trim();
+    const includeRequest =
+      styleShotPreset === "custom" && trimmedRequest.length > 0;
     const styleShotSettings: StyleShotSettings | undefined =
-      assetTypes.has("style_shot") &&
-      (styleShotPreset !== null || trimmedRequest.length > 0)
+      assetTypes.has("style_shot") && styleShotPreset !== null
         ? {
-            ...(styleShotPreset !== null && { preset: styleShotPreset }),
-            ...(trimmedRequest.length > 0 && {
-              additionalRequest: trimmedRequest,
-            }),
+            preset: styleShotPreset,
+            ...(includeRequest && { additionalRequest: trimmedRequest }),
           }
         : undefined;
     // short_video: concept is required when short_video is in assetTypes (the
@@ -330,12 +342,14 @@ export function AssetUploadForm({
           </Field>
         )}
 
-        {/* Style shot options — only when style_shot is selected. Lets users
-            steer the shot's mood (preset) and layer free-text instructions
-            on top. Both optional; absent state is "AI decides everything". */}
+        {/* Style shot options — only when style_shot is selected. User picks
+            one of three modes:
+              · usage_scene / styling_props → fixed A/B master-prompt pairs
+                (textarea hidden, prompts are self-contained)
+              · custom → user-authored prompt (textarea required, full prompt) */}
         {assetTypes.has("style_shot") && (
           <>
-            <Field label="스타일샷 연출 (선택)">
+            <Field label="스타일샷 연출" required>
               <div
                 role="group"
                 aria-label="스타일샷 프리셋"
@@ -366,22 +380,28 @@ export function AssetUploadForm({
               )}
             </Field>
 
-            <Field
-              label="스타일샷 추가 요청사항 (선택)"
-              htmlFor="style-shot-request"
-            >
-              <textarea
-                id="style-shot-request"
-                value={styleShotRequest}
-                onChange={(e) =>
-                  setStyleShotRequest(e.target.value.slice(0, 200))
-                }
-                rows={2}
-                maxLength={200}
-                placeholder="예: 따뜻한 골든아워 조명, 우드톤 배경"
-                className="w-full resize-none rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
-              />
-            </Field>
+            {styleShotPreset === "custom" && (
+              <Field
+                label="스타일샷 프롬프트"
+                htmlFor="style-shot-request"
+                required
+              >
+                <textarea
+                  id="style-shot-request"
+                  value={styleShotRequest}
+                  onChange={(e) =>
+                    setStyleShotRequest(e.target.value.slice(0, 4000))
+                  }
+                  rows={10}
+                  maxLength={4000}
+                  placeholder="예: Using the uploaded product as the primary anchor, photograph a moody editorial scene with soft directional window light, handcrafted ceramics, and an asymmetric editorial composition. Vertical 4:5."
+                  className="w-full resize-y rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
+                />
+                <span className="font-kr text-meta text-fg-muted">
+                  같은 프롬프트로 시드만 달리해 2장이 생성됩니다.
+                </span>
+              </Field>
+            )}
           </>
         )}
 

@@ -25,7 +25,6 @@ import {
   type JobKind,
   type JobVariant,
   type ShortVideoConcept,
-  type StyleShotPreset,
 } from "./types";
 
 const FAL_KEY = process.env.FAL_KEY;
@@ -51,6 +50,551 @@ const PROGRESS_CAP = 0.92;
 
 const FAL_JOB_PREFIX = "fal__";
 
+// Separator used to embed two fal request_ids inside a single style_shot
+// jobId when a preset (styling_props / usage_scene) submits two jobs in
+// parallel. `~` doesn't appear in fal's UUID-style request_ids.
+const STYLE_SHOT_DUAL_PAIR_SEP = "~";
+
+// Style-shot presets that use the dual-prompt submission path. Each maps to
+// a (promptA, promptB) pair and a (labelA, labelB) pair. Some pairs are
+// static constants; `editorial_text` builds them at runtime from market +
+// brand message.
+type DualPreset = "styling_props" | "usage_scene" | "editorial_text";
+
+function isDualPreset(value: unknown): value is DualPreset {
+  return (
+    value === "styling_props" ||
+    value === "usage_scene" ||
+    value === "editorial_text"
+  );
+}
+
+const STYLE_SHOT_STYLING_NEGATIVE =
+  "AVOID (negative prompt): low quality, cheap commercial look, oversaturated colors, fake CGI rendering, plastic texture, unrealistic reflections, artificial shadows, floating ingredients, duplicated objects, distorted packaging, warped typography, flat lighting, fake steam, excessive sharpness, cartoon appearance, stock image aesthetic, visual clutter, poor composition, unrealistic food texture, AI-generated look, synthetic materials, overprocessed image, unrealistic depth of field, glossy fake surfaces.";
+
+const STYLE_SHOT_STYLING_PROMPT_A = `MASTER PROMPT — CONCEPT A
+Organic Luxury Editorial
+Using the uploaded packaged food product as the primary visual anchor, create an ultra-premium editorial food campaign image that feels photographed for a world-class luxury culinary brand.
+
+The final image must feel emotionally authentic, visually restrained, and indistinguishable from a real high-budget commercial food photoshoot.
+
+Do not create a typical advertisement.
+Do not make the product feel artificially highlighted.
+Instead, create the feeling of an intimate, sophisticated culinary moment captured naturally.
+
+ART DIRECTION:
+A refined contemporary kitchen environment with soft directional daylight entering from the side.
+The atmosphere feels calm, elevated, tactile, and quietly luxurious.
+
+The product exists naturally within the scene surrounded by carefully styled fresh ingredients, elegant preparation details, handmade ceramics, textured linen, subtle moisture, realistic steam, and beautifully imperfect culinary elements.
+
+Avoid symmetrical placement.
+Avoid centered hero composition.
+Use intentional negative space and editorial framing.
+
+The image should feel inspired by:
+premium Korean and Japanese food editorials,
+high-end lifestyle magazines,
+Michelin-level culinary campaigns,
+quiet luxury branding,
+minimal luxury visual storytelling.
+
+FOOD STYLING:
+Ingredients should appear fresh, seasonal, organic, and naturally handled.
+Vegetables must show realistic imperfections.
+Steam should feel subtle and physically believable.
+Liquids and sauces should behave naturally with realistic viscosity and reflections.
+
+LIGHTING:
+Soft natural window light,
+gentle highlight rolloff,
+realistic shadow falloff,
+subtle cinematic contrast,
+physically accurate reflections,
+natural lens behavior,
+micro contrast in textures,
+authentic optical depth.
+
+MATERIAL RESPONSE:
+Every surface must feel physically real:
+ceramic glaze,
+linen fibers,
+wood grain,
+condensation,
+food moisture,
+glass reflections,
+soft matte packaging texture.
+
+CAMERA AESTHETIC:
+Photographed using a full-frame professional camera with premium cinema-grade macro lens characteristics.
+Realistic shallow depth of field.
+Natural focus transition.
+Subtle filmic grain.
+No digital overprocessing.
+
+COMPOSITION:
+Editorial luxury composition,
+intentional framing,
+foreground depth layering,
+natural object interaction,
+premium visual rhythm,
+sophisticated spatial balance.
+
+IMPORTANT:
+The packaging structure and brand identity should remain recognizable from the uploaded image while naturally integrated into the environment.
+
+The image must never feel AI-generated.
+
+Avoid:
+CGI appearance,
+plastic textures,
+overly perfect food,
+excessive saturation,
+fake cinematic effects,
+cheap commercial styling,
+floating ingredients,
+distorted labels,
+synthetic lighting,
+visual clutter.
+
+All visible typography or localized packaging adaptation must use the target market language naturally and professionally.
+
+Vertical 4:5 composition.
+Ultra high detail.
+Global luxury campaign quality.
+
+${STYLE_SHOT_STYLING_NEGATIVE}`;
+
+const STYLE_SHOT_STYLING_PROMPT_B = `MASTER PROMPT — CONCEPT B
+Dark Cinematic Gastronomy
+Create a world-class cinematic gastronomy campaign image using the uploaded packaged food product as the narrative centerpiece.
+
+The final result should feel like a luxury Michelin-star restaurant campaign photographed by an elite commercial food photography studio.
+
+This is not a direct advertisement.
+This is cinematic culinary storytelling.
+
+The product should feel naturally embedded within an emotionally rich fine dining environment while preserving recognizable brand identity and overall packaging authenticity.
+
+ART DIRECTION:
+A dark, sophisticated, contemporary dining atmosphere with dramatic but controlled lighting.
+
+The environment should contain:
+deep shadow gradients,
+warm focused highlights,
+refined table styling,
+handcrafted ceramic plating,
+subtle reflective surfaces,
+premium culinary presentation,
+minimal but intentional garnish elements,
+elegant environmental depth.
+
+The image should communicate:
+craftsmanship,
+depth,
+premium taste,
+culinary sophistication,
+modern gastronomy culture,
+luxury restraint.
+
+VISUAL LANGUAGE:
+Inspired by:
+high-end gastronomy campaigns,
+luxury hotel restaurant branding,
+cinematic culinary editorials,
+modern Seoul and Tokyo fine dining aesthetics,
+premium beverage and food luxury advertising.
+
+LIGHTING:
+Directional cinematic lighting,
+soft shadow transitions,
+controlled reflections,
+beautiful specular highlights,
+natural light absorption,
+rich black depth without crushing details.
+
+FOOD REALISM:
+All food must appear physically real and professionally plated.
+Textures must show authentic moisture, heat, oils, glaze, and natural material behavior.
+Steam and atmosphere should feel subtle and photographic, never synthetic.
+
+CAMERA FEEL:
+Shot on a high-end full-frame cinema camera system with luxury commercial lens rendering.
+Realistic lens compression.
+Natural optical falloff.
+Extremely realistic depth separation.
+Subtle film grain.
+No artificial HDR processing.
+
+COMPOSITION:
+Sophisticated editorial asymmetry,
+foreground/background depth layering,
+luxury negative space,
+careful object hierarchy,
+visually intentional framing.
+
+IMPORTANT:
+Do not stylize into fantasy CGI.
+Do not exaggerate colors.
+Do not over-sharpen.
+Do not create unrealistic perfection.
+
+The product must remain believable, premium, and naturally integrated into the culinary narrative.
+
+All typography or localized package adaptation must appear naturally written in the target market language.
+
+Vertical 4:5 composition.
+Photorealistic.
+Luxury global campaign standard.
+
+${STYLE_SHOT_STYLING_NEGATIVE}`;
+
+const STYLE_SHOT_STYLING_LABEL_A = "A · 오가닉 럭셔리";
+const STYLE_SHOT_STYLING_LABEL_B = "B · 다크 시네마틱";
+
+// ── usage_scene preset master prompts ──────────────────────────────────────
+// "사용 장면" is also a dual-prompt A/B preset. User-provided master prompt
+// describes one warm-home-dining shot and one dark-fine-dining shot; we split
+// it into two standalone prompts so the model gets a single, focused brief
+// per request_id.
+
+const STYLE_SHOT_USAGE_COMMON_PREAMBLE = `Create an ultra-premium editorial food campaign image using the uploaded packaged food product as the culinary ingredient reference.
+
+This image must focus on an authentic product usage moment with natural human interaction.
+
+The final image must look indistinguishable from real luxury commercial food photography campaigns created by elite global creative agencies.`;
+
+const STYLE_SHOT_USAGE_GLOBAL_DIRECTION = `-----------------------------------
+GLOBAL VISUAL DIRECTION
+-----------------------------------
+
+The image must:
+- preserve recognizable packaging identity from the uploaded image
+- feel physically realistic
+- avoid artificial AI aesthetics
+- maintain authentic food realism
+- use anatomically correct hands and natural human posture
+- contain realistic material textures and lighting behavior
+- feel emotionally believable and observational
+
+CAMERA AESTHETIC:
+Shot using a premium full-frame cinema camera with luxury commercial food photography lens characteristics.
+Natural shallow depth of field.
+Organic focus transitions.
+Subtle film grain.
+No artificial HDR look.
+
+Avoid:
+cheap commercial styling,
+oversaturated colors,
+plastic textures,
+CGI appearance,
+floating ingredients,
+distorted packaging,
+warped typography,
+fake steam,
+artificial reflections,
+stock photo aesthetics,
+overdesigned composition,
+AI-generated look.
+
+All visible typography and localized packaging adaptation must use the target market language naturally and professionally.
+
+Vertical 4:5 composition.
+Ultra photorealistic.
+World-class luxury campaign quality.
+
+${STYLE_SHOT_STYLING_NEGATIVE}`;
+
+const STYLE_SHOT_USAGE_PROMPT_A = `${STYLE_SHOT_USAGE_COMMON_PREAMBLE}
+
+-----------------------------------
+WARM ORGANIC HOME DINING
+-----------------------------------
+
+Create a bright, emotionally warm, premium lifestyle culinary scene.
+
+SCENE:
+A refined contemporary home kitchen or dining environment during real meal preparation.
+A person is naturally using the product while cooking or finishing a dish.
+
+Possible actions:
+pouring,
+drizzling,
+stirring,
+mixing,
+seasoning,
+or plating food naturally by hand.
+
+The atmosphere should feel:
+warm,
+calm,
+organic,
+minimal,
+emotionally rich,
+and naturally luxurious.
+
+Use:
+soft natural daylight,
+subtle steam,
+fresh ingredients,
+textured linen,
+ceramic tableware,
+organic imperfections,
+gentle shadows,
+beautiful negative space,
+realistic food preparation details.
+
+The product must feel naturally integrated into the workflow rather than intentionally advertised.
+
+Luxury Korean/Japanese lifestyle editorial aesthetic.
+Quiet premium mood.
+Natural human realism.
+No posing for camera.
+
+${STYLE_SHOT_USAGE_GLOBAL_DIRECTION}`;
+
+const STYLE_SHOT_USAGE_PROMPT_B = `${STYLE_SHOT_USAGE_COMMON_PREAMBLE}
+
+-----------------------------------
+DARK CINEMATIC FINE DINING
+-----------------------------------
+
+Create a dramatically different luxury gastronomy campaign image.
+
+SCENE:
+A sophisticated modern fine-dining kitchen or chef's table environment with cinematic lighting and premium restaurant atmosphere.
+
+A chef or culinary professional is naturally using the product during final dish preparation or plating.
+
+Possible actions:
+precise pouring,
+careful garnish placement,
+brushing sauce,
+mixing ingredients,
+or finishing a premium dish.
+
+The mood should feel:
+cinematic,
+dark,
+refined,
+intense,
+modern,
+and Michelin-level premium.
+
+Use:
+deep shadow gradients,
+controlled highlights,
+metal reflections,
+ceramic textures,
+subtle steam,
+luxury plating,
+focused lighting,
+foreground/background depth layering,
+editorial asymmetry,
+high-end gastronomy storytelling.
+
+The product should appear naturally embedded into the culinary process rather than intentionally showcased.
+
+Modern Seoul/Tokyo fine-dining campaign aesthetic.
+No influencer-style presentation.
+No exaggerated gestures.
+
+${STYLE_SHOT_USAGE_GLOBAL_DIRECTION}`;
+
+const STYLE_SHOT_USAGE_LABEL_A = "A · 따뜻한 가정 다이닝";
+const STYLE_SHOT_USAGE_LABEL_B = "B · 다크 파인다이닝";
+
+// ── editorial_text preset master prompts ──────────────────────────────────
+// "텍스트 포함 연출컷" renders campaign typography directly into the image, so
+// unlike the other dual presets it needs runtime-injected market language and
+// brand message. The user-supplied master prompt is split into A/B scenes and
+// wrapped by a common preamble + global direction. CAMPAIGN TEXT block is
+// inserted near the top so the model treats it as a primary constraint.
+
+const STYLE_SHOT_EDITORIAL_PREAMBLE = `Create a premium editorial food campaign image using the uploaded packaged food product.
+
+The overall visual direction should be inspired by high-end Korean/Japanese lifestyle branding photography:
+warm natural daylight,
+minimal composition,
+quiet luxury mood,
+soft shadows,
+editorial negative space,
+natural textures,
+and elegant typography placement integrated into the composition itself.
+
+The final result should feel like a luxury lifestyle campaign rather than a traditional food advertisement.
+
+This image MUST contain beautifully integrated text directly inside the composition.
+Typography should feel premium, minimal, emotional, and naturally embedded into the scene like a real commercial campaign layout.
+
+The text styling should be inspired by:
+high-end Korean lifestyle brands,
+minimal editorial typography,
+soft luxury branding,
+Aesop-style visual restraint,
+premium Korean/Japanese object photography.
+
+Typography must:
+- look professionally art-directed
+- use the target market language naturally
+- be clean and readable
+- feel physically integrated into the environment
+- preserve generous negative space around the text
+- avoid bold commercial advertising style`;
+
+const STYLE_SHOT_EDITORIAL_SCENE_A = `-----------------------------------
+QUIET MORNING KITCHEN
+-----------------------------------
+
+Create a calm, emotionally warm still-life food editorial scene.
+
+SCENE:
+A wooden kitchen table near a softly sunlit window.
+The uploaded product is naturally placed among fresh ingredients and subtle cooking elements.
+
+Use:
+soft morning sunlight,
+window shadows,
+linen fabric,
+wood textures,
+ceramic bowls,
+fresh herbs,
+vegetables,
+minimal kitchen styling,
+organic imperfections,
+quiet natural atmosphere.
+
+The product should not feel aggressively advertised.
+It should feel naturally present inside a beautiful lifestyle moment.
+
+Leave elegant negative space on one side of the image for typography integration.
+
+TEXT DIRECTION:
+Minimal emotional campaign copy placed vertically or asymmetrically within the empty wall or negative space area.
+
+Typography should feel:
+quiet,
+premium,
+editorial,
+minimal,
+and emotionally restrained.`;
+
+const STYLE_SHOT_EDITORIAL_SCENE_B = `-----------------------------------
+ELEVATED DINING TABLE
+-----------------------------------
+
+Create a refined and cinematic premium dining editorial scene.
+
+SCENE:
+A sophisticated dining table composition featuring a completed dish prepared using the uploaded product.
+
+The atmosphere should feel:
+warm,
+refined,
+modern,
+and naturally luxurious.
+
+Use:
+soft directional sunlight,
+subtle steam,
+premium ceramic plating,
+natural table styling,
+elegant shadows,
+refined food presentation,
+linen textures,
+editorial object placement,
+quiet luxury atmosphere.
+
+The product should appear naturally integrated beside the completed dish rather than centered like a traditional advertisement.
+
+Maintain strong editorial composition with intentional negative space for typography.
+
+TEXT DIRECTION:
+Elegant premium campaign typography integrated into the empty composition area.
+
+Typography should feel:
+high-end,
+minimal,
+emotional,
+luxurious,
+and naturally balanced within the layout.`;
+
+const STYLE_SHOT_EDITORIAL_GLOBAL_DIRECTION = `-----------------------------------
+GLOBAL VISUAL DIRECTION
+-----------------------------------
+
+The image must:
+- preserve recognizable packaging identity
+- feel physically realistic
+- avoid artificial AI aesthetics
+- maintain realistic lighting and material behavior
+- contain sophisticated editorial composition
+- feel emotionally authentic and observational
+- resemble real luxury campaign photography from a global creative agency
+
+CAMERA AESTHETIC:
+Shot using a premium full-frame commercial photography camera with luxury editorial lens rendering.
+Natural depth of field.
+Subtle film grain.
+Organic focus transitions.
+No artificial HDR processing.
+
+Avoid:
+cheap commercial styling,
+oversaturated colors,
+plastic textures,
+CGI appearance,
+fake shadows,
+floating ingredients,
+distorted packaging,
+warped typography,
+stock image aesthetics,
+overdesigned composition,
+AI-generated look,
+aggressive advertising layout.
+
+Vertical 4:5 composition.
+Ultra photorealistic.
+Luxury editorial campaign quality.
+
+${STYLE_SHOT_STYLING_NEGATIVE}`;
+
+function buildEditorialTextPrompt(
+  variant: "A" | "B",
+  market: string,
+  brandMessage: string | undefined,
+): string {
+  const lang = languageForMarket(market);
+  const trimmedMessage = (brandMessage ?? "").trim();
+  const scene =
+    variant === "A"
+      ? STYLE_SHOT_EDITORIAL_SCENE_A
+      : STYLE_SHOT_EDITORIAL_SCENE_B;
+
+  const campaignTextLines: string[] = [
+    `CAMPAIGN TEXT — render visible typography in ${lang.label} (${lang.code}):`,
+    `- ALL visible campaign typography on this image MUST be rendered in ${lang.label}. Do NOT use English or Latin script unless the language code is en-US. Use natural, idiomatic ${lang.label} as it would appear in a real premium ${lang.label}-language lifestyle campaign — proper word breaks, market-appropriate punctuation, idiomatic phrasing.`,
+    trimmedMessage
+      ? `- The main campaign copy is: "${trimmedMessage}". Render this as the hero text in ${lang.label} — translate or transliterate into idiomatic ${lang.label} if the source isn't already in that language. Break across 1–2 short lines if the original is long. Keep it minimal — never crowd the composition.`
+      : `- Compose minimal, emotional 1–2 line campaign copy in ${lang.label} that fits a quiet luxury lifestyle brand. Keep it short (≤6 words per line) and poetic — never advertising-speak.`,
+    `- The product's brand WORDMARK on the package itself stays verbatim in its original script regardless of the campaign language.`,
+  ];
+
+  return [
+    STYLE_SHOT_EDITORIAL_PREAMBLE,
+    "",
+    ...campaignTextLines,
+    "",
+    scene,
+    "",
+    STYLE_SHOT_EDITORIAL_GLOBAL_DIRECTION,
+  ].join("\n");
+}
+
+const STYLE_SHOT_EDITORIAL_LABEL_A = "A · 조용한 아침 키친";
+const STYLE_SHOT_EDITORIAL_LABEL_B = "B · 우아한 다이닝 테이블";
+
 // Job state we care about beyond what the id encodes — only `model` for now,
 // since we map by kind. Lost on hot reload / cold start, but we recover by
 // looking up `modelForKind(kind)` as a fallback in poll.
@@ -75,6 +619,43 @@ function makeJobId(
   return `${FAL_JOB_PREFIX}${kind}__${startedAt}__${requestId}`;
 }
 
+function makeStyleShotDualJobId(
+  startedAt: number,
+  preset: DualPreset,
+  requestIdA: string,
+  requestIdB: string,
+): string {
+  return `${FAL_JOB_PREFIX}style_shot__${startedAt}__${preset}__${requestIdA}${STYLE_SHOT_DUAL_PAIR_SEP}${requestIdB}`;
+}
+
+function dualPromptsFor(
+  preset: DualPreset,
+  ctx: { market: string; brandMessage?: string },
+): [string, string] {
+  switch (preset) {
+    case "styling_props":
+      return [STYLE_SHOT_STYLING_PROMPT_A, STYLE_SHOT_STYLING_PROMPT_B];
+    case "usage_scene":
+      return [STYLE_SHOT_USAGE_PROMPT_A, STYLE_SHOT_USAGE_PROMPT_B];
+    case "editorial_text":
+      return [
+        buildEditorialTextPrompt("A", ctx.market, ctx.brandMessage),
+        buildEditorialTextPrompt("B", ctx.market, ctx.brandMessage),
+      ];
+  }
+}
+
+function dualLabelsFor(preset: DualPreset): [string, string] {
+  switch (preset) {
+    case "styling_props":
+      return [STYLE_SHOT_STYLING_LABEL_A, STYLE_SHOT_STYLING_LABEL_B];
+    case "usage_scene":
+      return [STYLE_SHOT_USAGE_LABEL_A, STYLE_SHOT_USAGE_LABEL_B];
+    case "editorial_text":
+      return [STYLE_SHOT_EDITORIAL_LABEL_A, STYLE_SHOT_EDITORIAL_LABEL_B];
+  }
+}
+
 function parseJobId(
   jobId: string,
 ): {
@@ -82,15 +663,26 @@ function parseJobId(
   startedAt: number;
   concept?: ShortVideoConcept;
   requestId: string;
+  /**
+   * Present only when the style_shot was kicked off via a dual-prompt preset
+   * (styling_props / usage_scene), which submits two fal jobs in parallel —
+   * one per master prompt. Both request_ids are embedded in the jobId so this
+   * code path can recover them across server restarts. `requestId` above is
+   * the same as `dualPair[0]` — kept for compatibility with code that wants a
+   * single id.
+   */
+  dualPair?: [string, string];
+  /** Which dual preset kicked the job off — drives A/B label selection. */
+  dualPreset?: DualPreset;
 } | null {
   if (!jobId.startsWith(FAL_JOB_PREFIX)) return null;
   const rest = jobId.slice(FAL_JOB_PREFIX.length);
-  // Two formats supported:
-  //   - kind__startedAt__concept__requestId  (short_video with concept)
-  //   - kind__startedAt__requestId           (package, style_shot, or
-  //                                           short_video without concept)
-  // Tell them apart by whether the segment after startedAt is a known
-  // ShortVideoConcept id (which never contains `__`).
+  // Formats supported:
+  //   - kind__startedAt__concept__requestId       (short_video with concept)
+  //   - style_shot__startedAt__<preset>__idA~idB  (style_shot dual presets;
+  //                                                <preset> is a DualPreset id)
+  //   - kind__startedAt__requestId                (package, style_shot, or
+  //                                                short_video without concept)
   const a = rest.indexOf("__");
   if (a < 0) return null;
   const kind = rest.slice(0, a) as JobKind;
@@ -103,18 +695,27 @@ function parseJobId(
   const afterTs = afterKind.slice(b + 2);
 
   let concept: ShortVideoConcept | undefined;
+  let dualPair: [string, string] | undefined;
+  let dualPreset: DualPreset | undefined;
   let requestId: string;
   const c = afterTs.indexOf("__");
   if (c > 0) {
-    const conceptSlot = afterTs.slice(0, c);
-    const isKnownConcept = SHORT_VIDEO_CONCEPTS.some(
-      (sc) => sc.id === conceptSlot,
-    );
-    if (isKnownConcept) {
-      concept = conceptSlot as ShortVideoConcept;
-      requestId = afterTs.slice(c + 2);
+    const slot = afterTs.slice(0, c);
+    const tail = afterTs.slice(c + 2);
+    if (kind === "style_shot" && isDualPreset(slot)) {
+      const sep = tail.indexOf(STYLE_SHOT_DUAL_PAIR_SEP);
+      if (sep <= 0) return null;
+      const idA = tail.slice(0, sep);
+      const idB = tail.slice(sep + 1);
+      if (!idA || !idB) return null;
+      dualPair = [idA, idB];
+      dualPreset = slot;
+      requestId = idA;
+    } else if (SHORT_VIDEO_CONCEPTS.some((sc) => sc.id === slot)) {
+      concept = slot as ShortVideoConcept;
+      requestId = tail;
     } else {
-      // First segment isn't a known concept id — treat the whole tail as the
+      // First segment isn't a known marker — treat the whole tail as the
       // requestId (legacy 3-segment format, or a fal request_id that happens
       // to contain `__`).
       requestId = afterTs;
@@ -125,7 +726,7 @@ function parseJobId(
   }
 
   if (!requestId) return null;
-  return { kind, startedAt, concept, requestId };
+  return { kind, startedAt, concept, requestId, dualPair, dualPreset };
 }
 
 async function uploadDataUrl(dataUrl: string, fileName: string): Promise<string> {
@@ -225,127 +826,6 @@ function buildLabelPrompt(
   return lines.filter((l): l is string => l !== null).join("\n");
 }
 
-/**
- * Translates a UI-facing style preset into concrete scene direction the image
- * model can act on. `null` means "no preset chosen" — the prompt falls back to
- * letting the model infer scene from brand/market context.
- */
-function presetSceneDirection(preset: StyleShotPreset | undefined): string | null {
-  switch (preset) {
-    case "usage_scene":
-      return [
-        "SCENE — usage moment:",
-        "Show the product being held or used by a person mid-action. Only hands or partial body visible (avoid full faces / identifiable portraits).",
-        "Natural, candid gesture that conveys actual use of the product (pouring, dabbing, opening, applying — match what makes sense for the product category).",
-        "Soft, warm natural light, slightly off-axis. Background lightly defocused so the product + gesture remain the heroes.",
-      ].join(" ");
-    case "styling_props":
-      return [
-        "SCENE — editorial styling with props:",
-        "Stage the product as the central hero. Surround it with a thoughtful, minimal arrangement of complementary props that make sense for the product category — fresh ingredients, florals, raw textiles (linen, silk), ceramic vessels, marble or wood surfaces.",
-        "Magazine-editorial composition (Kinfolk / Cereal / Vogue still-life). Warm directional light, gentle shadows, considered negative space.",
-      ].join(" ");
-    case "lifestyle":
-      return [
-        "SCENE — lifestyle setting:",
-        "Place the product naturally in a real lifestyle environment appropriate to its category (e.g. food → sunlit kitchen counter with cookware nearby; cosmetics → bathroom vanity with linen and ceramics; tech → minimalist desk; beverages → café table).",
-        "Casual, lived-in feel. Soft natural daylight from a window. Slight depth-of-field separation. Feels like a candid moment, not a studio shoot.",
-      ].join(" ");
-    case "closeup_detail":
-      return [
-        "SCENE — macro detail:",
-        "Tight macro / closeup framing. Emphasize the product's surface texture, label print quality, material finish, and cap or closure detail.",
-        "Shallow depth of field — only a small portion of the product in razor-sharp focus, the rest dreamily blurred. Single-source studio lighting that sculpts texture and edges.",
-      ].join(" ");
-    case "minimal_studio":
-      return [
-        "SCENE — minimal studio:",
-        "Single-color seamless studio backdrop in a brand-aligned tone. Product photographed clean and graphic; sculpted hard-then-soft shadows.",
-        "High-contrast advertising aesthetic — Apple / Aesop / COS commercial style. No props. Let the product be the entire composition. Symmetrical or rule-of-thirds composition.",
-      ].join(" ");
-    case "ai_recommended":
-    case undefined:
-      return [
-        "SCENE — AI-directed:",
-        "Compose the scene to best amplify the brand's visual mood and the target market's aesthetic expectations. Choose between minimal studio, editorial styling-with-props, or a lifestyle setting based on which most strongly communicates the brand identity given the brand colors, mood, and message above.",
-      ].join(" ");
-  }
-}
-
-function buildStyleShotPrompt(
-  input: GenerationInput,
-  opts: { hasReference: boolean; hasBase: boolean },
-): string {
-  const { brandGuide: g, market, brandMessage, styleShot, revision } = input;
-  const palette = g.palette
-    .map((p) => `${p.hex}${p.name ? ` (${p.name})` : ""}`)
-    .join(", ");
-  const brand = g.brandName ?? g.logoWordmark?.text ?? "BRAND";
-  const scene = presetSceneDirection(styleShot?.preset);
-  const additional = (styleShot?.additionalRequest ?? "").trim();
-  const lang = languageForMarket(market);
-
-  // Image input layout. gpt-image-2/edit treats image (1) as the canvas/base
-  // for editing, and additional images as references. So when revising from
-  // a previously-generated variant, that variant becomes (1); when starting
-  // fresh, the product becomes (1).
-  //
-  //   no base, no ref  → [PRODUCT]
-  //   no base, ref     → [PRODUCT, REFERENCE]
-  //   base, no ref     → [PREV_RESULT, PRODUCT]
-  //   base, ref        → [PREV_RESULT, PRODUCT, REFERENCE]
-  const productIdx = opts.hasBase ? 2 : 1;
-  const refIdx = opts.hasReference ? (opts.hasBase ? 3 : 2) : 0;
-
-  const lines: (string | null)[] = [
-    `Generate a high-end product styling photograph (a "고감도 디자인 연출샷") — magazine-quality commercial / lifestyle still featuring the product.`,
-    `NOT a label flat. NOT a 3D render. NOT a packshot on white. The output is a photographic scene that elevates the product as a brand object.`,
-    "",
-    `INPUT IMAGES (in order):`,
-    opts.hasBase
-      ? `  (1) PREVIOUS RESULT — the user is iterating on this image. Keep its overall composition, lighting direction, and mood as the starting point; apply the requested revision below as a focused edit, not a full re-imagining.`
-      : null,
-    `  (${productIdx}) ACTUAL PRODUCT — visual reference for the product's shape, colors, container, and label layout. Preserve container shape, label background colors, label layout/structure, and proportions exactly. The product LABEL TEXT may be re-rendered in the target market language when localization applies (see below); do NOT change anything else about the product's visual design.`,
-    refIdx > 0
-      ? `  (${refIdx}) STYLE REFERENCE — borrow LIGHTING, COLOR GRADING, COMPOSITION, AND MOOD from this image. Do NOT copy the reference's product or props verbatim — only its photographic treatment.`
-      : null,
-    "",
-    `CRITICAL — product identity comes from the image, not from the brand guide:`,
-    `- The product CATEGORY, SHAPE, FUNCTION, and IDENTITY are dictated EXCLUSIVELY by image (${productIdx}). What you see in that image IS the product. If image (${productIdx}) shows a model kit, depict a model kit. If it shows a bottle, depict that bottle. If it shows hardware, depict that hardware.`,
-    `- The brand guide below informs the surrounding SCENE only — colors of props, surfaces, textiles, walls, mood, lighting. It does NOT dictate what the product is.`,
-    `- If the brand guide's typical product category differs from what image (${productIdx}) actually shows (for example a beverage brand guide paired with a model-kit product image), depict the product from image (${productIdx}). NEVER substitute the brand's typical product for the one in the image, and never add a second product from the brand alongside it.`,
-    "",
-    `PRODUCT LABEL LOCALIZATION (${lang.label} / ${lang.code}):`,
-    `- This block applies ONLY when the product in image (${productIdx}) is a labeled consumer-packaged item where label text is a meaningful part of the design (food, beverage, cosmetics, household goods, toiletries, supplements, etc.). For products where the visible text is minimal, decorative, brand-collab, or foreign-by-design — model kits, art objects, electronics with mostly model numbers, hardware, apparel, hobby items — SKIP localization entirely and preserve the label exactly as shown in image (${productIdx}).`,
-    `- When localization applies: render label text in ${lang.label}, as if this were the regional retail SKU for ${market}.`,
-    `- BRAND WORDMARK / logo: ALWAYS keep verbatim in its ORIGINAL script regardless of category (e.g. "Yondu" — food, "Hermès" — luxury, "Bandai" — model kits, "Sony" — electronics, "Aesop" — cosmetics). Do NOT translate or transliterate the wordmark itself. If the wordmark is non-Latin and the target market uses a Latin script, you may add a small Latin transliteration NEAR the wordmark in much smaller weight, but the original script must remain dominant.`,
-    `- Translate any short descriptor or tagline near the wordmark (1-3 word phrases) into idiomatic ${lang.label}. The descriptor's nature depends on category — a flavor for food, a fragrance note for cosmetics, a finish for hardware, etc. — translate whatever actually applies to this product.`,
-    `- Translate visible specification callouts that make sense for the product's category (volume for liquids, weight for solids, count, dimensions). MODEL NUMBERS, serial numbers, version codes, and regulatory marks are preserved verbatim.`,
-    `- For dense small text appropriate to the category (ingredients/nutrition for food; usage and warnings for cosmetics; spec sheet for electronics; assembly notes for model kits), render plausible ${lang.label} typography that reads cleanly. Prioritize visual coherence and legibility over exact wording — better legible-and-plausible than garbled mojibake or mixed-script soup.`,
-    `- DO NOT change: container shape, label background colors, label layout/structure, product silhouette, scale, cap or closure design.`,
-    "",
-    scene,
-    "",
-    `BRAND DIRECTION:`,
-    `- Brand: ${brand}.`,
-    `- Target market: ${market}. Aesthetic cues should feel native to this market without being clichéd or stereotyped.`,
-    `- Brand colors (use as supporting palette via props, surfaces, textiles, walls — NOT applied to the product itself): ${palette}.`,
-    g.moodCaption ? `- Visual mood to evoke: ${g.moodCaption}.` : null,
-    brandMessage ? `- Brand message to evoke through the scene: "${brandMessage}".` : null,
-    additional ? `- Additional creative direction from the user: ${additional}.` : null,
-    "",
-    `OUTPUT REQUIREMENTS:`,
-    `- Single 1:1 square photograph at high resolution.`,
-    `- Photorealistic, magazine-editorial quality. Sharp focus on the product, professional lighting and color grading.`,
-    `- The product (image ${productIdx}) must be clearly identifiable and feature prominently as the visual hero, with its label localized to ${lang.label} as specified above.`,
-    `- No watermarks, no overlay text, no captions, no logos that aren't already on the product itself.`,
-    `- No surreal artifacts, no extra duplicates of the product, no impossible geometry. Treat as a real product photoshoot.`,
-    revision?.note ? `Revision request: ${revision.note}.` : null,
-    revision?.quickFix ? `Quick fix: ${revision.quickFix}.` : null,
-  ];
-
-  return lines.filter((l): l is string => l !== null).join("\n");
-}
 
 function buildShortVideoPrompt(
   input: GenerationInput,
@@ -592,6 +1072,16 @@ class FalProvider implements AIProvider {
     const model = jobModel.get(jobId) ?? modelForKind(parsed.kind);
     const startedAt = parsed.startedAt;
 
+    if (parsed.dualPair) {
+      return await this.getStyleShotDualJob(jobId, parsed.dualPair, {
+        model,
+        startedAt,
+        // Legacy DUAL jobs (encoded before preset was embedded) default to
+        // styling_props labels — that was the only dual preset at the time.
+        preset: parsed.dualPreset ?? "styling_props",
+      });
+    }
+
     try {
       const status = await fal.queue.status(model, {
         requestId: parsed.requestId,
@@ -664,6 +1154,97 @@ class FalProvider implements AIProvider {
     }
   }
 
+  /**
+   * Poll the two fal request_ids the "styling_props" preset submitted in
+   * parallel and fold them into a single Job. Returns `running` until BOTH
+   * complete, then yields a `succeeded` Job whose two variants are labeled A/B
+   * per master prompt. Any single-side failure fails the whole job — the UI is
+   * designed around variant pairs and a half result would be confusing.
+   */
+  private async getStyleShotDualJob(
+    jobId: string,
+    pair: [string, string],
+    ctx: { model: string; startedAt: number; preset: DualPreset },
+  ): Promise<Job> {
+    const { model, startedAt, preset } = ctx;
+    const [labelA, labelB] = dualLabelsFor(preset);
+    try {
+      const [statusA, statusB] = await Promise.all([
+        fal.queue.status(model, { requestId: pair[0] }),
+        fal.queue.status(model, { requestId: pair[1] }),
+      ]);
+
+      const bothCompleted =
+        statusA.status === "COMPLETED" && statusB.status === "COMPLETED";
+
+      if (!bothCompleted) {
+        // Either still queued or in progress → synthesize a single progress
+        // value by averaging both legs. Each leg is computed exactly the way
+        // the single-job path computes it.
+        const legProgress = (s: typeof statusA): number => {
+          if (s.status === "COMPLETED") return PROGRESS_CAP;
+          if (s.status === "IN_QUEUE") return 0;
+          const elapsed = Date.now() - startedAt;
+          return Math.min(
+            PROGRESS_CAP,
+            elapsed / ESTIMATED_DURATIONS_MS.style_shot,
+          );
+        };
+        const progress = (legProgress(statusA) + legProgress(statusB)) / 2;
+        const queued =
+          statusA.status === "IN_QUEUE" && statusB.status === "IN_QUEUE";
+        return {
+          id: jobId,
+          kind: "style_shot",
+          status: queued ? "queued" : "running",
+          progress,
+          startedAt,
+        };
+      }
+
+      const [resultA, resultB] = await Promise.all([
+        fal.queue.result(model, { requestId: pair[0] }),
+        fal.queue.result(model, { requestId: pair[1] }),
+      ]);
+
+      const urlA =
+        (resultA.data as { images?: FalImage[] } | undefined)?.images?.[0]?.url;
+      const urlB =
+        (resultB.data as { images?: FalImage[] } | undefined)?.images?.[0]?.url;
+      if (!urlA || !urlB) {
+        throw new AIError(
+          "GENERATION_FAILED",
+          "스타일샷 결과 이미지가 비어있습니다.",
+        );
+      }
+
+      return {
+        id: jobId,
+        kind: "style_shot",
+        status: "succeeded",
+        progress: 1,
+        result: {
+          variants: [
+            { id: "style-dual-a", url: urlA, label: labelA },
+            { id: "style-dual-b", url: urlB, label: labelB },
+          ],
+        },
+        startedAt,
+      };
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "fal.queue.status (dual pair) failed";
+      return {
+        id: jobId,
+        kind: "style_shot",
+        status: "failed",
+        progress: 0,
+        error: message,
+        startedAt,
+      };
+    }
+  }
+
   private async startStyleShot(
     input: GenerationInput,
   ): Promise<{
@@ -697,53 +1278,85 @@ class FalProvider implements AIProvider {
       );
     }
 
-    // Revision base — when the user picked a specific variant to iterate on,
-    // we feed it as image (1) so gpt-image-2/edit treats it as the canvas to
-    // modify rather than starting from scratch. Initial generation has no
-    // base; product is image (1).
-    const baseVariantUrl =
-      input.revision?.baseVariantUrl &&
-      input.revision.baseVariantUrl.startsWith("https://")
-        ? input.revision.baseVariantUrl
-        : null;
-
-    // No describeProduct here — the multimodal model already sees the product
-    // image directly, and style-shot prompts don't need a textual category
-    // anchor the way label artwork does. Skipping saves ~10s of pre-flight
-    // latency.
-    const prompt = buildStyleShotPrompt(input, {
-      hasReference: !!referenceUrl,
-      hasBase: !!baseVariantUrl,
-    });
     const model = modelForKind("style_shot");
 
-    const imageUrls: string[] = [];
-    if (baseVariantUrl) imageUrls.push(baseVariantUrl);
-    imageUrls.push(productUrl);
-    if (referenceUrl) imageUrls.push(referenceUrl);
+    // "custom" preset: user-authored prompt mode. The free-text field carries
+    // the entire prompt (not additive guidance). One submit with num_images=2
+    // gives two different samples of the same prompt via seed randomization.
+    if (input.styleShot?.preset === "custom") {
+      const customPrompt = (input.styleShot?.additionalRequest ?? "").trim();
+      if (!customPrompt) {
+        throw new AIError(
+          "INVALID_INPUT",
+          "직접 입력 모드에서는 프롬프트가 필요합니다.",
+        );
+      }
+      const submitted = await fal.queue.submit(model, {
+        input: {
+          prompt: customPrompt,
+          image_urls: [productUrl],
+          image_size: "square_hd",
+          quality: "medium",
+          num_images: 2,
+          output_format: "png",
+        },
+      });
+      const requestId = submitted.request_id;
+      const startedAt = Date.now();
+      const jobId = makeJobId("style_shot", startedAt, requestId);
+      jobModel.set(jobId, model);
+      return {
+        jobId,
+        uploads: {
+          product: productUrl,
+          reference: referenceUrl ?? undefined,
+        },
+      };
+    }
 
-    const submitted = await fal.queue.submit(model, {
-      input: {
-        prompt,
-        image_urls: imageUrls,
-        // 1:1 reads well in the 2-up grid the UI uses for style shots and is
-        // the safe default for social marketing assets. Per-aspect-ratio
-        // selection can come later.
-        image_size: "square_hd",
-        // medium is plenty for marketing photography; high doubles latency for
-        // detail we don't need (no dense label text to render).
-        quality: "medium",
-        // Two samples in one submit — gpt-image-2 randomizes the seed per
-        // sample so the user gets variety to pick from. parseVariants already
-        // maps each image to "스타일 1 / 스타일 2" labels.
-        num_images: 2,
-        output_format: "png",
-      },
+    // Everything else (styling_props, usage_scene, or any legacy/undefined
+    // preset id from older saved projects) → dual-prompt A/B path. Each preset
+    // defines a fixed (promptA, promptB) pair; we submit two independent fal
+    // jobs in parallel (num_images=1 each) and encode both request_ids + the
+    // preset in the jobId so getJob can re-poll them and pick the right A/B
+    // labels. Reference, revision baseVariantUrl, and additionalRequest are
+    // intentionally ignored — the master prompts are self-contained.
+    const dualPreset: DualPreset = isDualPreset(input.styleShot?.preset)
+      ? input.styleShot.preset
+      : "usage_scene";
+    const [promptA, promptB] = dualPromptsFor(dualPreset, {
+      market: input.market,
+      brandMessage: input.brandMessage,
     });
-
-    const requestId = submitted.request_id;
+    const [submittedA, submittedB] = await Promise.all([
+      fal.queue.submit(model, {
+        input: {
+          prompt: promptA,
+          image_urls: [productUrl],
+          image_size: "portrait_4_3",
+          quality: "medium",
+          num_images: 1,
+          output_format: "png",
+        },
+      }),
+      fal.queue.submit(model, {
+        input: {
+          prompt: promptB,
+          image_urls: [productUrl],
+          image_size: "portrait_4_3",
+          quality: "medium",
+          num_images: 1,
+          output_format: "png",
+        },
+      }),
+    ]);
     const startedAt = Date.now();
-    const jobId = makeJobId("style_shot", startedAt, requestId);
+    const jobId = makeStyleShotDualJobId(
+      startedAt,
+      dualPreset,
+      submittedA.request_id,
+      submittedB.request_id,
+    );
     jobModel.set(jobId, model);
     return {
       jobId,

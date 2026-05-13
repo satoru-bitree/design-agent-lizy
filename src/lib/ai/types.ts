@@ -44,17 +44,30 @@ export type BrandSectionInterpretResult =
   | { section: "mood"; moodCaption: string };
 
 /**
- * Preset choices for style-shot generation. The user picks at most one;
- * `additionalRequest` carries any free-text instruction layered on top.
- * `ai_recommended` lets the provider pick a style based on brand/market.
+ * Style-shot generation modes. Exactly one is required when the user opts in
+ * to a style-shot. `additionalRequest` semantics depend on the mode — see the
+ * per-variant doc comments below.
  */
 export type StyleShotPreset =
   | "usage_scene"
+  /**
+   * Editorial styling shot. Backed by two fixed master prompts (오가닉 럭셔리 /
+   * 다크 시네마틱) submitted in parallel — produces a 4:5 A/B pair.
+   */
   | "styling_props"
-  | "lifestyle"
-  | "closeup_detail"
-  | "minimal_studio"
-  | "ai_recommended";
+  /**
+   * Editorial shot with typography integrated into the composition. Backed by
+   * two master prompts (조용한 아침 키친 / 우아한 다이닝 테이블) with the
+   * project's target market language and brand message injected at runtime so
+   * rendered text matches the regional campaign.
+   */
+  | "editorial_text"
+  /**
+   * User-authored prompt mode. `additionalRequest` is treated as the entire
+   * prompt (not as additive guidance) and submitted with num_images:2 so the
+   * user gets two different samples of the same prompt.
+   */
+  | "custom";
 
 export const STYLE_SHOT_PRESETS: {
   id: StyleShotPreset;
@@ -64,38 +77,32 @@ export const STYLE_SHOT_PRESETS: {
   {
     id: "usage_scene",
     label: "사용 장면",
-    description: "제품을 손에 들거나 사용하는 모습",
+    description: "따뜻한 가정 / 다크 파인다이닝 A·B 페어",
   },
   {
     id: "styling_props",
     label: "연출컷",
-    description: "소품과 함께 배치한 고감도 스타일링",
+    description: "오가닉 럭셔리 / 다크 시네마틱 A·B 페어",
   },
   {
-    id: "lifestyle",
-    label: "라이프스타일",
-    description: "일상 공간에 자연스럽게 놓인 모습",
+    id: "editorial_text",
+    label: "텍스트 포함 연출컷",
+    description: "조용한 아침 키친 / 우아한 다이닝 A·B 페어 (캠페인 카피 포함)",
   },
   {
-    id: "closeup_detail",
-    label: "클로즈업",
-    description: "텍스처·재질을 강조한 매크로 샷",
-  },
-  {
-    id: "minimal_studio",
-    label: "미니멀 스튜디오",
-    description: "단색 배경 + 그림자 활용 광고 컷",
-  },
-  {
-    id: "ai_recommended",
-    label: "AI 추천",
-    description: "브랜드·시장에 맞춰 AI가 결정",
+    id: "custom",
+    label: "직접 입력",
+    description: "프롬프트를 직접 작성해 동일 프롬프트로 2장 생성",
   },
 ];
 
 export type StyleShotSettings = {
   preset?: StyleShotPreset;
-  /** Free-text instruction layered on top of the preset (max 200 chars). */
+  /**
+   * For `usage_scene`: free-text instruction layered on top of the preset
+   * (max 200 chars). For `custom`: the user's full prompt (longer cap).
+   * Ignored for `styling_props` (master prompts are fixed).
+   */
   additionalRequest?: string;
 };
 
