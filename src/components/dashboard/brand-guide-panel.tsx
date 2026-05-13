@@ -358,7 +358,7 @@ function MoodPreview({
     <div
       className="relative flex h-[110px] flex-col items-center justify-center gap-1 overflow-hidden rounded-md"
       style={{
-        background: imageUrl
+        backgroundImage: imageUrl
           ? `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${imageUrl})`
           : fallbackGrad,
         backgroundSize: "cover",
