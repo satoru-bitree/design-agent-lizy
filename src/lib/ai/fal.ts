@@ -595,6 +595,86 @@ function buildEditorialTextPrompt(
 const STYLE_SHOT_EDITORIAL_LABEL_A = "A · 조용한 아침 키친";
 const STYLE_SHOT_EDITORIAL_LABEL_B = "B · 우아한 다이닝 테이블";
 
+// ── vintage_poster preset master prompt ───────────────────────────────────
+// "빈티지 포스터" is a single-concept preset (not dual A/B). Submitted with
+// num_images:2 so the user gets two variations of the same poster brief.
+// Target-market language and brand message are injected into the headline at
+// runtime so the visible poster typography matches the regional campaign.
+
+const STYLE_SHOT_VINTAGE_POSTER_BASE = `Look at the food in the attached photo and transform it into a 1960s Mid-Century Modern American food advertisement poster.
+
+FIRST ANALYZE THE FOOD:
+- Identify the dish, plating style, colors, ingredients, and textures
+- Simplify the food into graphic geometric forms
+- Match the palette to retro atomic-era colors inspired by the food
+
+STYLE:
+Bold Mid-Century Modern design, inspired by 1960s American advertising art, Saul Bass poster composition, vintage cookbook graphics, geometric abstraction, stylized commercial illustration.
+
+LAYOUT:
+Strong asymmetrical composition. Large graphic headline integrated into the design. The food becomes a stylized centerpiece made of simplified shapes and flat forms. Include atomic starbursts, boomerang shapes, geometric tableware, and abstract kitchen elements.
+
+TYPOGRAPHY:
+Bold condensed sans-serif and slab-serif typography.
+Minimal hand-lettered accents.
+Strong graphic hierarchy.
+1960s advertising layout.
+
+COLOR PALETTE:
+Muted retro tones:
+mustard yellow,
+burnt orange,
+teal blue,
+avocado green,
+warm cream,
+soft coral.
+
+LIGHTING:
+Bright flat graphic lighting.
+Minimal shadows.
+Screenprint poster feel.
+Clean white or cream background.
+
+ILLUSTRATION STYLE:
+Flat gouache-like painting,
+screenprinted texture,
+limited color palette,
+minimal realism,
+clean edges,
+retro commercial art.
+
+ATMOSPHERE:
+Optimistic atomic-age American kitchen.
+Stylish suburban modernism.
+Cheerful and graphic.
+
+DO NOT USE:
+photorealism,
+dark shadows,
+modern minimalism,
+luxury restaurant aesthetics,
+cinematic lighting,
+high contrast realism.`;
+
+function buildVintagePosterPrompt(
+  market: string,
+  brandMessage: string | undefined,
+): string {
+  const lang = languageForMarket(market);
+  const trimmedMessage = (brandMessage ?? "").trim();
+
+  const headlineBlock = [
+    `CAMPAIGN HEADLINE — render visible poster typography in ${lang.label} (${lang.code}):`,
+    `- ALL visible poster text (headline, sub-copy, callouts) MUST be rendered in ${lang.label}. Do NOT use English or Latin script unless the language code is en-US. Style the lettering as bold 1960s American advertising typography adapted naturally for the ${lang.label}-speaking market — condensed sans-serif or slab-serif, strong graphic hierarchy, period-correct word breaks and punctuation.`,
+    trimmedMessage
+      ? `- The hero headline copy is: "${trimmedMessage}". Render it as the dominant poster headline in ${lang.label} — translate or transliterate into idiomatic ${lang.label} if the source isn't already in that language. Keep it short and punchy (≤6 words).`
+      : `- Compose a bold, optimistic 2–4 word poster headline in ${lang.label} that fits a 1960s mid-century food advertisement — cheerful and confident, never modern-minimalist.`,
+    `- The product's brand WORDMARK on the package itself stays verbatim in its original script regardless of the campaign language.`,
+  ].join("\n");
+
+  return `${STYLE_SHOT_VINTAGE_POSTER_BASE}\n\n${headlineBlock}`;
+}
+
 // Job state we care about beyond what the id encodes — only `model` for now,
 // since we map by kind. Lost on hot reload / cold start, but we recover by
 // looking up `modelForKind(kind)` as a fallback in poll.
@@ -1327,6 +1407,34 @@ class FalProvider implements AIProvider {
           prompt: customPrompt,
           image_urls: [productUrl],
           image_size: "square_hd",
+          quality: "medium",
+          num_images: 2,
+          output_format: "png",
+        },
+      });
+      const requestId = submitted.request_id;
+      const startedAt = Date.now();
+      const jobId = makeJobId("style_shot", startedAt, requestId);
+      jobModel.set(jobId, model);
+      return {
+        jobId,
+        uploads: {
+          product: productUrl,
+          reference: referenceUrl ?? undefined,
+        },
+      };
+    }
+
+    // "vintage_poster" preset: single mid-century-modern poster brief with
+    // target-market language injected into the headline. One submit with
+    // num_images=2 gives two stylistic variations of the same poster.
+    if (input.styleShot?.preset === "vintage_poster") {
+      const prompt = buildVintagePosterPrompt(input.market, input.brandMessage);
+      const submitted = await fal.queue.submit(model, {
+        input: {
+          prompt,
+          image_urls: [productUrl],
+          image_size: "portrait_4_3",
           quality: "medium",
           num_images: 2,
           output_format: "png",

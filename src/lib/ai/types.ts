@@ -63,6 +63,13 @@ export type StyleShotPreset =
    */
   | "editorial_text"
   /**
+   * 1960s mid-century modern food advertisement poster illustration (Saul Bass
+   * / atomic-age style). Single concept submitted with num_images:2 so the
+   * user gets two variations. Target-market language is injected into the
+   * poster headline at runtime.
+   */
+  | "vintage_poster"
+  /**
    * User-authored prompt mode. `additionalRequest` is treated as the entire
    * prompt (not as additive guidance) and submitted with num_images:2 so the
    * user gets two different samples of the same prompt.
@@ -88,6 +95,11 @@ export const STYLE_SHOT_PRESETS: {
     id: "editorial_text",
     label: "텍스트 포함 연출컷",
     description: "조용한 아침 키친 / 우아한 다이닝 A·B 페어 (캠페인 카피 포함)",
+  },
+  {
+    id: "vintage_poster",
+    label: "빈티지 포스터",
+    description: "1960년대 미드센추리 모던 광고 포스터 일러스트 (헤드라인 카피 포함)",
   },
   {
     id: "custom",
