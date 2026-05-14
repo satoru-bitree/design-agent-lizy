@@ -56,7 +56,8 @@ export function DashboardClient() {
         shortVideoSettings: data.shortVideoSettings,
       });
       router.push(`/projects/${projectId}`);
-    } catch {
+    } catch (e) {
+      console.error("[dashboard] submitGeneration failed:", e);
       setSubmitting(false);
     }
   };

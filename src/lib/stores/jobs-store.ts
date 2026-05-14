@@ -554,8 +554,10 @@ export const useJobsStore = create<Store>()(
               },
             };
           });
-        } catch {
-          // Network errors swallowed here; user can retry by re-submitting the dialog.
+        } catch (e) {
+          // User can retry by re-submitting the dialog; log so the failure is
+          // observable in DevTools instead of vanishing silently.
+          console.error("[jobs-store] submitRevision failed:", e);
         }
       },
 
@@ -584,8 +586,10 @@ export const useJobsStore = create<Store>()(
           if (!res.ok) return;
           const job = (await res.json()) as Job;
           set((state) => ({ jobs: { ...state.jobs, [jobId]: job } }));
-        } catch {
-          // Transient errors swallowed; next tick retries.
+        } catch (e) {
+          // Next tick retries automatically; log so transient failures are
+          // still visible while debugging.
+          console.error("[jobs-store] pollJob failed:", e);
         }
       },
     }),
@@ -595,8 +599,12 @@ export const useJobsStore = create<Store>()(
       //   v2 — brand shape changed from { status, result } to per-section + guide
       //   v3 — text sections gained `result/applying/error` fields, so a v2
       //        persisted state still crashes (`palette.result.length` on undefined).
+      //   v4 — strip brandGuide image dataUrls from persisted projects. Each
+      //        project was snapshotting full base64 logo + moodboard; after
+      //        ~10–20 projects this blew the localStorage quota and every new
+      //        setItem threw QuotaExceededError. Migration scrubs prior bloat.
       // Anything < v3 resets the brand slice on load.
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => localStorage),
       // Manual rehydrate via <StoreRehydrate /> to avoid SSR mismatch.
       skipHydration: true,
@@ -614,9 +622,20 @@ export const useJobsStore = create<Store>()(
           "guide" in brand &&
           !!palette &&
           "result" in palette;
+        // v3→v4: scrub brandGuide image dataUrls from already-persisted
+        // projects so we drop below the localStorage quota on next write.
+        const scrubbedProjects = p.generationProjects
+          ? Object.fromEntries(
+              Object.entries(p.generationProjects).map(([id, project]) => [
+                id,
+                stripProjectGuideImages(project),
+              ]),
+            )
+          : p.generationProjects;
         return {
           ...p,
           brand: isCurrent ? (brand as unknown as BrandState) : INITIAL_BRAND,
+          generationProjects: scrubbedProjects,
         } as Partial<Store>;
       },
       // ObjectURLs die at refresh — strip them. Brand non-ready states reset
@@ -631,7 +650,7 @@ export const useJobsStore = create<Store>()(
         generationProjects: Object.fromEntries(
           Object.entries(state.generationProjects).map(([id, p]) => [
             id,
-            {
+            stripProjectGuideImages({
               ...p,
               // Strip transient fields (objectUrl dies at refresh; dataUrl is
               // huge base64). Keep remoteUrl — that's the persistent CDN URL
@@ -645,7 +664,7 @@ export const useJobsStore = create<Store>()(
                     ]),
                   )
                 : undefined,
-            },
+            }),
           ]),
         ),
         jobs: state.jobs,
@@ -717,6 +736,30 @@ function applyInterpretResult(
     }
     return { brand: { ...nextBrand, guide: deriveGuide(nextBrand) } };
   });
+}
+
+/**
+ * Drop heavy base64 image fields from a project's brandGuide snapshot before
+ * persisting. logo + moodboard each carry full base64 dataUrls that would
+ * otherwise duplicate per-project and exhaust localStorage. Text fields
+ * (palette hex, typography names, brandName, moodCaption) are tiny and stay.
+ *
+ * Trade-off: revisions submitted AFTER a refresh will not have the original
+ * brand-guide images embedded. The structured text portions of the guide are
+ * still sent, so the LLM keeps the brand intent. If we ever need to round-trip
+ * the images, we should upload them to remote CDN once and store remoteUrls
+ * here instead.
+ */
+function stripProjectGuideImages(project: GenerationProject): GenerationProject {
+  if (!project.brandGuide) return project;
+  return {
+    ...project,
+    brandGuide: {
+      ...project.brandGuide,
+      logo: "",
+      moodboard: [],
+    },
+  };
 }
 
 function stripBrandImages(brand: BrandState): BrandState {

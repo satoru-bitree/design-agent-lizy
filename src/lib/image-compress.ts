@@ -57,8 +57,10 @@ export async function compressImageFile(
     ctx.drawImage(img, 0, 0, width, height);
 
     return canvas.toDataURL("image/jpeg", quality);
-  } catch {
+  } catch (e) {
     // Decode failure: fall back to raw bytes so the request still goes out.
+    // Logged so we still notice when compression silently degrades.
+    console.warn("[image-compress] decode failed, sending raw bytes:", e);
     return fileToDataUrl(file);
   }
 }
