@@ -12,6 +12,10 @@ export type ImageLightboxProps = {
   caption?: string;
 };
 
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url);
+}
+
 export function ImageLightbox({
   open,
   onOpenChange,
@@ -19,6 +23,7 @@ export function ImageLightbox({
   alt,
   caption,
 }: ImageLightboxProps) {
+  const isVideo = isVideoUrl(src);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -29,22 +34,39 @@ export function ImageLightbox({
           <DialogPrimitive.Title className="sr-only">{alt}</DialogPrimitive.Title>
 
           <div className="relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={src}
-              alt={alt}
-              className="max-h-[82vh] max-w-[92vw] rounded-md object-contain shadow-modal"
-            />
+            {isVideo ? (
+              <video
+                src={src}
+                controls
+                autoPlay
+                loop
+                playsInline
+                aria-label={alt}
+                className="max-h-[82vh] max-w-[92vw] rounded-md object-contain shadow-modal"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={alt}
+                className="max-h-[82vh] max-w-[92vw] rounded-md object-contain shadow-modal"
+              />
+            )}
 
             <div className="absolute right-3 top-3 flex items-center gap-2">
               <button
                 type="button"
-                aria-label="이미지 다운로드"
-                title="이미지 다운로드"
+                aria-label={isVideo ? "영상 다운로드" : "이미지 다운로드"}
+                title={isVideo ? "영상 다운로드" : "이미지 다운로드"}
                 onClick={() =>
                   downloadFile(
                     src,
-                    deriveDownloadFilename(src, caption ?? alt, "asset"),
+                    deriveDownloadFilename(
+                      src,
+                      caption ?? alt,
+                      "asset",
+                      isVideo ? "mp4" : "png",
+                    ),
                   )
                 }
                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-pill bg-bg/80 text-fg-dim outline-none transition-colors duration-micro ease-lz hover:bg-bg hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"

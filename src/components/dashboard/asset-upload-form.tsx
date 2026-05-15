@@ -145,6 +145,14 @@ export function AssetUploadForm({
             label: "숏폼 영상 컨셉",
             done: shortVideoConcept !== null,
           },
+          ...(shortVideoConcept === "custom"
+            ? [
+                {
+                  label: "숏폼 영상 프롬프트",
+                  done: shortVideoRequest.trim().length > 0,
+                },
+              ]
+            : []),
         ]
       : []),
     {
@@ -178,8 +186,9 @@ export function AssetUploadForm({
           }
         : undefined;
     // short_video: concept is required when short_video is in assetTypes (the
-    // `disabledReason` guard above prevents reaching here otherwise). Additional
-    // request stays optional.
+    // checklist gate prevents reaching here otherwise). Additional request is
+    // optional for preset concepts and required for "custom" (carries the
+    // user's full Seedance prompt — the checklist gate enforces non-empty).
     const trimmedVideoRequest = shortVideoRequest.trim();
     const shortVideoSettings: ShortVideoSettings | undefined =
       assetTypes.has("short_video") && shortVideoConcept !== null
@@ -441,22 +450,28 @@ export function AssetUploadForm({
               )}
             </Field>
 
-            <Field
-              label="숏폼 영상 추가 요청사항 (선택)"
-              htmlFor="short-video-request"
-            >
-              <textarea
-                id="short-video-request"
-                value={shortVideoRequest}
-                onChange={(e) =>
-                  setShortVideoRequest(e.target.value.slice(0, 200))
-                }
-                rows={2}
-                maxLength={200}
-                placeholder="예: 라면에 양념 뿌리는 모습, 책상 위 사용 장면"
-                className="w-full resize-none rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
-              />
-            </Field>
+            {shortVideoConcept === "custom" && (
+              <Field
+                label="숏폼 영상 프롬프트"
+                htmlFor="short-video-request"
+                required
+              >
+                <textarea
+                  id="short-video-request"
+                  value={shortVideoRequest}
+                  onChange={(e) =>
+                    setShortVideoRequest(e.target.value.slice(0, 2000))
+                  }
+                  rows={8}
+                  maxLength={2000}
+                  placeholder="예: Slow cinematic dolly-in toward the product, soft golden rim light sweeping across the bottle from the left, faint dust particles drifting in warm backlight, shallow depth of field, 9:16, 5s."
+                  className="w-full resize-y rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
+                />
+                <span className="font-kr text-meta text-fg-muted">
+                  입력한 프롬프트가 Seedance에 그대로 전달됩니다.
+                </span>
+              </Field>
+            )}
           </>
         )}
 

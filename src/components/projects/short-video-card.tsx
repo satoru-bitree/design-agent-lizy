@@ -1,6 +1,7 @@
 import Image from "next/image";
-import { Film, Play } from "lucide-react";
+import { Download, Film, Play } from "lucide-react";
 import { AssetResultCard } from "@/components/projects/asset-result-card";
+import { deriveDownloadFilename, downloadFile } from "@/lib/download";
 import type { AssetView } from "@/lib/stores/jobs-store";
 
 // Real provider returns mp4 (seedance); mock returns a picsum still. Pick the
@@ -14,6 +15,7 @@ export function ShortVideoCard({
   view,
   description,
   onRequestRevision,
+  onOpenVariant,
 }: {
   view: AssetView;
   /**
@@ -23,35 +25,86 @@ export function ShortVideoCard({
    */
   description?: string | null;
   onRequestRevision?: () => void;
+  onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
+  const variant = view.status === "ready" ? view.variants[0] : null;
+  const downloadAction =
+    variant && isVideoUrl(variant.url) ? (
+      <DownloadAction
+        url={variant.url}
+        hint={variant.meta?.concept ?? variant.label ?? "short-video"}
+      />
+    ) : null;
   return (
     <AssetResultCard
       title="숏폼 영상"
       icon={<Film className="h-4 w-4" strokeWidth={1.5} />}
       view={view}
       onRequestRevision={onRequestRevision}
+      extraFooterAction={downloadAction}
     >
-      <Body view={view} description={description ?? null} />
+      <Body
+        view={view}
+        description={description ?? null}
+        onOpenVariant={onOpenVariant}
+      />
     </AssetResultCard>
+  );
+}
+
+function DownloadAction({ url, hint }: { url: string; hint: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-3 py-2">
+      <button
+        type="button"
+        onClick={() =>
+          downloadFile(
+            url,
+            deriveDownloadFilename(url, hint, "short-video", "mp4"),
+          )
+        }
+        className="inline-flex items-center gap-1.5 font-kr text-[13px] font-medium text-fg outline-none transition-colors duration-micro ease-lz hover:text-mint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+        aria-label="MP4 영상 다운로드"
+      >
+        <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+        MP4 다운로드
+      </button>
+    </div>
   );
 }
 
 function Body({
   view,
   description,
+  onOpenVariant,
 }: {
   view: AssetView;
   description: string | null;
+  onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
   if (view.status === "ready") {
     const variant = view.variants[0];
     if (!variant) return null;
     const meta = variant.meta ?? {};
     const isVideo = isVideoUrl(variant.url);
+    const caption = meta.concept ?? variant.label ?? "숏폼 영상";
+    const openable = isVideo && !!onOpenVariant;
+    const PreviewFrame = openable ? "button" : "div";
+    const previewProps = openable
+      ? {
+          type: "button" as const,
+          onClick: () =>
+            onOpenVariant?.(variant.url, variant.label ?? "숏폼 영상", caption),
+          "aria-label": `${caption} 크게 보기`,
+        }
+      : {};
     return (
       <div className="flex flex-col items-center gap-4">
-        <div className="relative aspect-[9/16] w-[200px] rounded-[24px] bg-[#0A0A0A] p-2 shadow-soft">
-          <div className="relative h-full w-full overflow-hidden rounded-[18px] bg-surface-3">
+        <PreviewFrame
+          {...previewProps}
+          className={`relative aspect-[9/16] w-[200px] rounded-[24px] bg-[#0A0A0A] p-2 shadow-soft outline-none${openable ? " cursor-zoom-in transition-transform duration-micro ease-lz hover:scale-[1.01] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint" : ""}`}
+        >
+          <div className="pointer-events-none relative h-full w-full overflow-hidden rounded-[18px] bg-surface-3">
             {isVideo ? (
               <video
                 src={variant.url}
@@ -72,24 +125,23 @@ function Body({
                   sizes="200px"
                   className="object-cover"
                 />
-                <button
-                  type="button"
-                  aria-label="재생"
-                  className="absolute inset-0 m-auto flex h-14 w-14 items-center justify-center rounded-pill bg-mint text-bg shadow-fab transition-transform duration-micro ease-lz hover:scale-105"
+                <span
+                  aria-hidden
+                  className="absolute inset-0 m-auto flex h-14 w-14 items-center justify-center rounded-pill bg-mint text-bg shadow-fab"
                 >
                   <Play
                     className="h-5 w-5 translate-x-[2px]"
                     fill="currentColor"
                     strokeWidth={0}
                   />
-                </button>
+                </span>
                 <div className="absolute bottom-3 left-3 right-3 h-px overflow-hidden bg-white/20">
                   <div className="h-full w-[30%] bg-mint" />
                 </div>
               </>
             )}
           </div>
-        </div>
+        </PreviewFrame>
         <div className="flex flex-col items-center gap-1.5">
           <p className="font-kr text-[14px] font-semibold text-fg">
             {meta.concept ?? meta.platforms ?? variant.label ?? "숏폼 영상"}

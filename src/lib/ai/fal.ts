@@ -921,29 +921,31 @@ function buildShortVideoPrompt(
     .join(", ");
   const brand = g.brandName ?? g.logoWordmark?.text ?? "BRAND";
   const category = (opts.productInfo?.category ?? "").trim();
-  // Concept is now mandatory at the UI layer. Fallback to cinematic_mood
+  // Concept is now mandatory at the UI layer. Fallback to premium_mood
   // covers any legacy callsite (e.g. revision of a project saved before this
   // change) — it's the most class-agnostic of the remaining concepts.
-  const concept: ShortVideoConcept = opts.concept ?? "cinematic_mood";
+  // Fallback covers legacy callsites that pass an unknown concept id (e.g.
+  // revisions of projects saved before a concept was removed). global_storyboard
+  // is the safest landing spot since it carries the most self-contained prompt.
+  const concept: ShortVideoConcept = opts.concept ?? "global_storyboard";
   const conceptMeta = SHORT_VIDEO_CONCEPTS.find((c) => c.id === concept);
   const additional = (opts.additionalRequest ?? "").trim();
+  const durationSecs = durationForConcept(concept);
 
   const lines: (string | null)[] = [
     `9:16 vertical short-form clip starring the product. Preserve product identity, label, container, colors, proportions EXACTLY across every frame — never morph, replace, swap, or duplicate.`,
-    `Concept: ${conceptMeta?.label ?? "시네마틱 무드"} — ${conceptMeta?.description ?? "minimal cinematic hero shot"}.`,
+    `Concept: ${conceptMeta?.label ?? "글로벌 스토리보드"} — ${conceptMeta?.description ?? "multi-culture storyboard"}.`,
     category ? `Category hint: ${category}.` : null,
     `Silently identify class (food/beverage/cosmetic/cleaning/electronics/toy/apparel/stationery/tool/other); adapt scene to it. Never default to a kitchen for non-food.`,
     "",
     ...directionForConcept(concept),
     "",
-    `Camera locked, mostly stable. Shallow DoF, product sharp, background creamy.`,
-    `Brand: ${brand} · market ${market}. Palette (${palette}) applied as ambient tones, NEVER on the product itself.`,
-    g.moodCaption ? `Mood: ${g.moodCaption}.` : null,
+    `Brand: ${brand} · market ${market}. Palette (${palette}) is the brand's identity reference — apply only when the storyboard does not already specify per-cut color grading. NEVER recolor the product label itself.`,
+    g.moodCaption ? `Brand mood reference: ${g.moodCaption}.` : null,
     brandMessage ? `Brand message: "${brandMessage}".` : null,
     additional ? `User direction: ${additional}.` : null,
     "",
-    `Output: 9:16 vertical, 720p, 5s, premium product-advertising aesthetic. Product stays comfortably in frame.`,
-    `No watermarks, no overlay text, no on-screen captions. No surreal artifacts, no extra duplicates, no morphing.`,
+    `Output: 9:16 vertical, 720p, ${durationSecs === "auto" ? "duration chosen by the model based on the prompt above" : `${durationSecs}s`}, premium product-advertising aesthetic. Product stays comfortably in frame. No surreal artifacts, no extra duplicates, no morphing. On-screen text is allowed only where the storyboard above explicitly requests it.`,
     revision?.note ? `Revision request: ${revision.note}.` : null,
     revision?.quickFix ? `Quick fix: ${revision.quickFix}.` : null,
   ];
@@ -955,78 +957,83 @@ function buildShortVideoPrompt(
  * STEP 2 block for the short-video prompt — varies per concept. Returns an
  * array of strings ready to splice into the prompt body.
  *
- * Each concept gives the model a different center of gravity: usage gesture,
- * finished result, micro-process, kinetic ingredient drop, or pure cinematic
- * atmosphere.
+ * The `custom` concept is handled upstream (the user's prompt replaces this
+ * whole pipeline), so it isn't reached here. `global_storyboard` carries the
+ * fixed 8-beat multi-culture storyboard.
  */
 function directionForConcept(concept: ShortVideoConcept): string[] {
   switch (concept) {
-    case "usage_guide":
+    case "custom":
+      // Custom mode bypasses the structured prompt: `startShortVideo` uses the
+      // user's `additionalRequest` as the entire Seedance prompt directly. This
+      // branch should never execute, but returns a safe minimal direction as
+      // a defense-in-depth fallback.
       return [
-        `Usage demonstration: a pair of hands (only hands — NO faces, NO bodies) performs ONE realistic primary usage gesture for this product in 5 seconds. The target/setting must MATCH the product's class and feel like a real owner's moment of use — never blank, never empty, never food-themed for non-food, never non-food for food.`,
-        `Class anchors: (A) drizzle/spoon onto a plated dish; (B) prepare/serve with cookware (cup-noodle pour, plate steaming food); (C) pour into garnished glass or load brewer (beans→grinder, drip→mug, capsule→machine, stick→hot water); (D) apply to wrist/skin with vanity props; (E) spray/wipe a visibly soiled surface; (F) use on a desk with monitor/keyboard/cables — never in a kitchen; (G) hold/pose on a play surface with class-appropriate context — never in a kitchen; (H) worn on hand/wrist or laid out on fabric/leather — never on food; (I) at a desk with paper/notebook/book — never in a kitchen; (J) used on its actual target object — never on a plate; (K) match what is literally in the starting frame.`,
-        `Hands look natural and anatomical. The product remains the visual hero — hands serve it, never compete. If class is uncertain, do NOT default to a kitchen scene.`,
+        `Cinematic hero shot of the product. NO humans, NO hands. Camera gentle and continuous.`,
       ];
-    case "recipe":
+    case "global_storyboard":
+      // 15-second multi-culture storyboard. Engineered for the Yondu pilot but
+      // written so any food/beverage product slots in. The beat-by-beat timing
+      // is explicit so Seedance treats the 15s window as a structured montage,
+      // not a single long shot.
       return [
-        `Finished result: show a fully-styled outcome that this product produced or enabled, with the product visible alongside the result. NO mid-process shots, NO raw ingredients on screen — the moment looks fully complete.`,
-        `Class anchors: (A/B) plated finished dish with the product bottle/jar/pack beside it; (C) finished drink garnished (latte art / foam / ice / lemon) with the product alongside; (D) styled cosmetic result on hand/wrist (glowing skin, swatch, polished nail) with the product alongside; (E) visibly clean surface with the product alongside; (F) live desk scene — monitor aglow, cursor moving — with the product in place; (G) the finished assembled/built form of the toy; (H) apparel worn or styled on fabric/leather — never on food; (I) finished page/open book/styled workspace; (J) the tool's completed work beside the tool; (K) match what is literally in the starting frame.`,
-        `Camera slowly pushes in or pulls back to reveal both product and result. Hands optional — only serving the reveal, never competing.`,
-      ];
-    case "cooking_process":
-      return [
-        `Process beat: a tight 2-beat micro-story in 5 seconds — Beat 1 setup/raw, Beat 2 product is added/applied/placed/triggered, implied result by the end. Smooth continuous camera links the beats — never a hard cut.`,
-        `Class anchors: (A/B) raw dish → drizzle/spoon product → finished bite; (C) empty glass with ice → pour/load product → finished drink with foam/garnish; (D) bare skin → dab/pump product → glow; (E) soiled surface → spray/wipe → clean; (F) bare desk → place/plug/click product → desk lights up; (G) parts spread → key piece placed → assembled; (H) folded apparel → wear/open → styled outcome; (I) blank page → bring pen/book → first line written; (J) raw target → tool used → completed work; (K) follow the starting frame's setting.`,
-        `Product is visible at the transition, anchoring both beats. Hands optional (only hands, no faces).`,
-      ];
-    case "kinetic_food":
-      return [
-        `STEP 2 — KINETIC FOOD PROMOTION (stop-motion-style ingredient dynamics around the product):`,
-        `Create a high-energy commercial-style clip where ingredients explode, fall, splash, and orbit around the product in a stop-motion-feel burst — the classic premium food-advertising aesthetic that visualizes flavor power. Think soy sauce commercials, hot sauce ads, beverage launch reels: the product is rock-stable while a choreographed cloud of ingredients flies around it.`,
-        `This concept is engineered for FOOD and BEVERAGE classes (A / B / C). If the product is non-food, gracefully degrade toward a cinematic hero shot with brand-palette particles or category-appropriate elements instead of literal ingredients — never invent food around a non-food product.`,
-        "",
-        `DIRECTION:`,
-        `- The product is the steady visual anchor — sits centered or slightly off-center, ROCK STABLE in every frame. Everything else moves around it.`,
-        `- A choreographed burst of ingredients caught mid-air around the product. Mix motions: some falling from above, some splashing, some orbiting, some bursting outward as if energy radiates from the product itself.`,
-        `- Stop-motion / freeze-frame feel: ingredients look sharply frozen, with subtle motion blur trailing them. The overall composition has continuous flow — not a static collage.`,
-        `- Camera holds steady or performs a very slow push-in toward the product. No pans, no shake.`,
-        `- Lighting: high-key commercial advertising light with deliberate rim light + dramatic directional shadows. Color grade saturated and food-photography-rich.`,
-        `- BACKGROUND must match the product's actual category — do NOT keep a blank/white packshot background, and do NOT default to a generic gradient. Pick a real, brand-aligned environment from frame 1:`,
-        `    · sauces / oils / pastes / seasonings → a warm kitchen counter (wood or marble surface, fresh herbs and ingredients staged nearby, soft window light, hint of kitchenware in soft focus behind).`,
-        `    · ready-to-cook / snack / instant food → a kitchen counter or dining surface with serving cookware cues (steaming pot, plated portion, chopsticks).`,
-        `    · beverages / coffee / tea / RTD → a cafe table, bar top, or dining surface with garnish-relevant props (ice, citrus, glassware, foam, brewing setup) and a sunlit window in soft focus.`,
-        `    · for non-food fallback → match the product's natural use context (vanity / desk / studio surface).`,
-        `Background stays in shallow depth of field so it never competes with the product, but it must read as a real place where this product naturally lives.`,
-        `- NO hands, NO faces. Pure product hero with ingredient choreography around it.`,
-        "",
-        `THE INGREDIENTS MUST MATCH WHAT THE PRODUCT ACTUALLY IS (read it from the starting frame + category hint):`,
-        `    · soy sauce / fish sauce → flying garlic cloves, sliced ginger, dried red pepper, splashes of dark sauce arcing through air, sesame seeds.`,
-        `    · sesame oil → sesame seeds streaming, golden oil drops, herb leaves.`,
-        `    · gochujang / hot sauce → flying red chili peppers, splashed red sauce arcs, garlic, sesame.`,
-        `    · ssamjang / doenjang → soybeans, garlic cloves, splashes of paste, green onion.`,
-        `    · cooking oil → herb leaves, garlic, dried spice, droplets.`,
-        `    · coffee → coffee beans flying, milk splash arcs, cocoa or cinnamon dust, steam.`,
-        `    · tea → tea leaves, water droplets, citrus slices, fresh herbs.`,
-        `    · seasoning powder / spice → corresponding herb/spice + the dish ingredients it would land on, mid-flight.`,
-        `    · snack / instant food → the literal ingredients of that snack (chips → potato slices + salt; ramyeon → noodles + green onion + chili; cookies → flour dust + chocolate chunks).`,
-        `    · RTD beverage / juice → corresponding fruits, ice cubes, splashes of the drink itself.`,
-        `    · beer → wheat stalks, hops, foam splash, water droplets.`,
-        `    · wine / spirits → grapes, cork, dark splash arcs.`,
-        `If the exact category isn't clear, pick the 2-3 most stereotype-defining ingredients for the closest class and commit to those — don't mix unrelated ingredients.`,
-        "",
-        `HARD RULES:`,
-        `- The product remains photo-realistically static and identifiable. The label MUST NEVER morph, transform, or be obscured by ingredients.`,
-        `- Ingredients NEVER cross over or block the product label.`,
-        `- No flying brand logos, no extra duplicates of the product, no flying packaging.`,
-        `- Motion blur on ingredients is welcome; the product itself stays tack-sharp.`,
-      ];
-    case "cinematic_mood":
-      return [
-        `Cinematic hero shot — pure product film (Aesop / Apple / Hermès style). NO humans, NO hands, NO faces, NO bodies. Movement comes ONLY from the camera and atmospheric elements.`,
-        `Camera: pick ONE — slow push-in, soft 30° orbit, or quiet vertical parallax. Gentle and continuous, never abrupt.`,
-        `Atmosphere: drifting sun rays, soft bokeh, gentle particle drift, faint steam or refractive light catches — match the product's material. Single-source cinematic light grade. Setting: a styled minimal surface (wood / marble / linen / paper) aligned with the product's aesthetic. Negative space welcome.`,
+        `15-second vertical 9:16 multi-culture storyboard ad. The product (assume Yondu — Korean plant-based umami seasoning — unless the starting frame clearly shows otherwise) is the constant anchor across every cut. Pacing is precise and beat-driven.`,
+        ``,
+        `STRUCTURE (timing is non-negotiable):`,
+        `- 0.0–1.0s · HOOK: the product bottle slowly rotates in center frame on a clean black background. To its right, a type-on subtitle appears letter by letter: "ONE BOTTLE."`,
+        `- 1.0–2.5s · CUT 1 / ITALY (MILAN): a copper pan on a warm Italian stovetop holds a bubbling tomato pasta sauce. The pan contains ONLY the sauce — no spoon, no ladle, no utensil of any kind is visible. The product bottle enters from above and traces ONE smooth circular ring-pour, hovering alone over the pan. Quick cutaway to an Italian nonna's face glowing with delight, mouthing "Mamma mia..." Lower-left overlay: "MILAN".`,
+        `- 2.5–4.0s · CUT 2 / MEXICO (OAXACA): outdoor market kitchen, warm hand-painted color. A stone molcajete holds finished salsa verde — bowl shows ONLY the salsa, no pestle, no spoon visible. The product bottle enters alone and performs the SAME signature ring-pour over the salsa. Quick cutaway to a Mexican chef's smile, mouthing "¡Increíble!" Lower-left overlay: "OAXACA".`,
+        `- 4.0–5.5s · CUT 3 / INDIA (MUMBAI): home kitchen, gold-warm spice tones. An earthen pot on the stove holds bubbling dal curry. The pot contains ONLY the curry — no ladle, no spoon visible. The product bottle enters alone and performs the SAME signature ring-pour. Quick cutaway to a woman in a sari beaming, mouthing "Wah!" Lower-left overlay: "MUMBAI".`,
+        `- 5.5–7.0s · CUT 4 / USA (BROOKLYN): rooftop BBQ, golden-hour rim light, brick wall in background. A grill holds sizzling burger patties — grill surface shows ONLY the patties, no brush, no spatula, no tongs visible. The product bottle enters alone and performs the SAME signature ring-pour over the patties. Quick cutaway to a Black man's satisfied smile, mouthing "Damn, that's good." Lower-left overlay: "BROOKLYN".`,
+        `- 7.0–8.5s · CUT 5 / KOREA (SEOUL): bright home kitchen, warm fluorescent. An earthen pot holds bubbling kimchi jjigae — pot contains ONLY the stew, no spoon, no ladle visible. The product bottle enters alone and performs the SAME signature ring-pour. Quick cutaway to a child's bright thumbs-up, mouthing "와, 진짜 맛있어!" Lower-left overlay: "SEOUL".`,
+        `- 8.5–11.0s · SHARED TABLE PULL-BACK: a single continuous overhead camera shot. Starting frame at 8.5s is a tight top-down close-up of the Korean kimchi jjigae pot, carrying over visually from the previous cut. The camera pulls back smoothly and steadily — no jumps, no hard cuts — revealing more of the table as it retreats. By 11.0s the wide top-down view shows ONE shared dining table set with all 5 dishes from the earlier cuts arranged in a loose circle around the product bottle, which stands upright at the table's center: Italian tomato pasta sauce in a copper pan, Mexican salsa verde in a stone molcajete, Indian dal curry in an earthen pot, Brooklyn-style burger patties on a wooden board, Korean kimchi jjigae in an earthen pot. The product bottle is the visual anchor — every dish is oriented toward it. Setting: a warm neutral wood table with a simple linen runner — no cultural bias toward any single country. Warm golden ambient light suggests a shared evening meal across cultures. NO humans, NO hands, NO faces in this beat — pure product + food still life with continuous camera motion. NO on-screen text in this beat. The dishes are visibly the same dishes shown in cuts 1–5 (same vessels, same plating) so viewers recognize this as the convergence of every cut above.`,
+        `- 11.0–13.0s · COPY: cut to clean black background. Two-line type-on copy in elegant sans-serif appears sequentially: line 1 "Korean roots." then line 2 "World flavor."`,
+        `- 13.0–15.0s · BRAND CLOSE: tight close-up of the product bottle, soft rim light. Lower-third caption fades in: "YONDU. Plant-based umami from Korea." A small Sampyo wordmark logo sits centered at the bottom.`,
+        ``,
+        `SIGNATURE GESTURE — mandatory mnemonic:`,
+        `The EXACT SAME "one circular ring-pour" motion with the product bottle MUST appear in all 5 culture cuts. The bottle drawing a single, even circle over the pan/pot is the campaign's signature — repeat it identically across cuts so it imprints visually (same energy as Sriracha's single-line drizzle becoming its global mnemonic). Always a single clean circle, drawn at a steady speed.`,
+        `Utensil isolation rule (HARD): throughout each culture cut, the cookware (pan / pot / bowl / grill) contains ONLY the food. The cookware surface remains free of every utensil — no spoon, no ladle, no spatula, no brush, no pestle, no tongs, no chopsticks, no whisk — for the entire duration of the cut. The product bottle is the only object that ever enters the airspace above the cookware. Tasting reactions are shown as a separate face cutaway — the cookware is never visible in the same frame as a utensil.`,
+        ``,
+        `LANGUAGE — must stay native:`,
+        `Each character's reaction line MUST be in their mother tongue exactly: "Mamma mia..." / "¡Increíble!" / "Wah!" / "Damn, that's good." / "와, 진짜 맛있어!" DO NOT unify to English. The mix of languages over the same product IS the message.`,
+        ``,
+        `PRODUCT INTEGRITY (hard rules):`,
+        `- The product bottle, label, label colors, and label typography must stay PIXEL-CONSISTENT across every cut. Read the label from the starting frame and lock it.`,
+        `- NEVER localize the label to the country language. The label stays the same in every cut.`,
+        `- NEVER swap or duplicate the product. One bottle, same bottle, everywhere.`,
+        `- Hands and faces are diverse and culture-appropriate. Faces are shown but stay tasteful — focus is the product gesture and the reaction.`,
+        ``,
+        `VISUAL TONE:`,
+        `- Warm food-cinematography color grade. Each cut feels visually native to its country (Italian sunlit kitchen / Mexican market color / Indian spice warmth / Brooklyn rooftop golden hour / Korean home kitchen warmth).`,
+        `- Camera mostly stable with small purposeful push-ins on the ring-pour beat.`,
+        `- No watermarks, no on-screen captions other than the city labels, copy lines, and brand close caption explicitly listed in the structure above.`,
       ];
   }
+}
+
+/**
+ * Output length per concept.
+ * - `custom`: `"auto"` — Seedance decides 4-15s from the user's prompt content.
+ *   The caller is responsible for showing a duration estimate / cost range to
+ *   the user since billing scales linearly with the chosen length.
+ * - `global_storyboard`: 15s — the storyboard's 8 beats can't compress shorter.
+ */
+function durationForConcept(concept: ShortVideoConcept): string {
+  switch (concept) {
+    case "custom":
+      return "auto";
+    case "global_storyboard":
+      return "15";
+  }
+}
+
+/**
+ * Human-readable duration for UI meta labels. Returns "자동" for `auto` since
+ * the actual length is only known after the model resolves it.
+ */
+function durationLabelForConcept(concept: ShortVideoConcept): string {
+  const d = durationForConcept(concept);
+  return d === "auto" ? "자동" : `${d}초`;
 }
 
 class FalProvider implements AIProvider {
@@ -1541,21 +1548,36 @@ class FalProvider implements AIProvider {
 
     // Normalize incoming concept against the current preset list. Persisted
     // projects from earlier dev sessions may carry a deprecated id (e.g.
-    // "ai_recommended" or "brand_story" which we've since removed). Map
-    // anything unknown to "cinematic_mood" — the safest class-agnostic
-    // concept — so the prompt and meta-label paths can't crash.
+    // "premium_mood", "cinematic_mood", "kinetic_food" — concepts we've since
+    // removed). Map anything unknown to "global_storyboard" — its prompt is
+    // self-contained, so it works even without a user-authored direction.
     const requestedConcept = input.shortVideo?.concept;
     const concept: ShortVideoConcept =
       requestedConcept &&
       SHORT_VIDEO_CONCEPTS.some((c) => c.id === requestedConcept)
         ? requestedConcept
-        : "cinematic_mood";
+        : "global_storyboard";
     const additionalRequest = input.shortVideo?.additionalRequest;
-    const prompt = buildShortVideoPrompt(input, {
-      productInfo,
-      concept,
-      additionalRequest,
-    });
+    // "custom" concept: user-authored prompt mode. The free-text field carries
+    // the entire Seedance prompt (not additive guidance). Skip the structured
+    // prompt builder and submit the user's text directly.
+    const prompt =
+      concept === "custom"
+        ? (() => {
+            const customPrompt = (additionalRequest ?? "").trim();
+            if (!customPrompt) {
+              throw new AIError(
+                "INVALID_INPUT",
+                "직접 입력 모드에서는 프롬프트가 필요합니다.",
+              );
+            }
+            return customPrompt;
+          })()
+        : buildShortVideoPrompt(input, {
+            productInfo,
+            concept,
+            additionalRequest,
+          });
     const model = modelForKind("short_video");
 
     const submitted = await fal.queue.submit(model, {
@@ -1564,12 +1586,11 @@ class FalProvider implements AIProvider {
         image_url: productUrl,
         // Shortform vertical: TikTok / Reels / Shorts.
         aspect_ratio: "9:16",
-        // 5s — fast feedback loop. Bump to 10s later when we want hero clips.
-        duration: "5",
+        // Per-concept output length. Default 5s for fast feedback; `test`
+        // bumps to 15s for the multi-culture storyboard pilot.
+        duration: durationForConcept(concept),
         resolution: "720p",
-        // Default is true; muting saves Seedance's audio-gen pass and keeps
-        // the clip silent for SNS overlay work.
-        generate_audio: false,
+        generate_audio: true,
       },
     });
 
@@ -1745,9 +1766,9 @@ function parseVariants(
     const url = d.video?.url;
     if (!url) return [];
     // Resolve the user-facing concept label from the active preset. Falls back
-    // to the cinematic_mood label for any legacy jobId whose concept slot is
-    // missing or no longer recognized (e.g. deprecated "ai_recommended").
-    const conceptId = extras.concept ?? "cinematic_mood";
+    // to global_storyboard for any legacy jobId whose concept slot is missing
+    // or no longer recognized (e.g. deprecated "premium_mood").
+    const conceptId = extras.concept ?? "global_storyboard";
     const conceptLabel =
       SHORT_VIDEO_CONCEPTS.find((c) => c.id === conceptId)?.label ??
       "숏폼 영상";
@@ -1759,7 +1780,7 @@ function parseVariants(
         meta: {
           concept: conceptLabel,
           ratio: "9:16",
-          duration: "5초",
+          duration: durationLabelForConcept(conceptId),
           resolution: "720p",
         },
       },

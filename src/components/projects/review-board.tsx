@@ -115,6 +115,7 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
             view={videoView}
             description={shortVideoDescription}
             onRequestRevision={() => openReady("short_video")}
+            onOpenVariant={openLightbox}
           />
         )}
       </div>

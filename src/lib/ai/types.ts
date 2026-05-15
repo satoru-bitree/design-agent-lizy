@@ -123,11 +123,19 @@ export type StyleShotSettings = {
  * the provider folds it into the motion-direction prompt.
  */
 export type ShortVideoConcept =
-  | "usage_guide"
-  | "recipe"
-  | "cooking_process"
-  | "kinetic_food"
-  | "cinematic_mood";
+  /**
+   * User-authored prompt mode. `additionalRequest` is treated as the entire
+   * Seedance prompt (not as additive guidance) and submitted directly.
+   * Duration is delegated to Seedance (`duration: "auto"`) so the model picks
+   * a length that fits the user's prompt.
+   */
+  | "custom"
+  /**
+   * Fixed 15-second multi-culture storyboard concept. Carries an 8-beat global
+   * montage prompt: hook → 5 country cuts (each with the signature ring-pour)
+   * → rapid montage → copy → brand close.
+   */
+  | "global_storyboard";
 
 export const SHORT_VIDEO_CONCEPTS: {
   id: ShortVideoConcept;
@@ -135,35 +143,23 @@ export const SHORT_VIDEO_CONCEPTS: {
   description: string;
 }[] = [
   {
-    id: "usage_guide",
-    label: "사용 가이드",
-    description: "손이 등장해 제품을 자연스럽게 사용하는 시범",
+    id: "custom",
+    label: "직접 입력",
+    description: "프롬프트를 직접 작성해 영상 생성 (길이는 모델이 자동 결정)",
   },
   {
-    id: "recipe",
-    label: "제품 활용 레시피",
-    description: "제품으로 만든 완성 결과물을 보여주는 컷",
-  },
-  {
-    id: "cooking_process",
-    label: "조리 과정",
-    description: "재료 → 제품 → 결과까지 짧은 흐름",
-  },
-  {
-    id: "kinetic_food",
-    label: "키네틱 푸드",
-    description: "식재료가 공중에서 움직이는 스톱모션 광고 컷 (식품·음료 추천)",
-  },
-  {
-    id: "cinematic_mood",
-    label: "시네마틱 무드",
-    description: "인물·동작 없이 카메라·빛만으로 광고 인서트",
+    id: "global_storyboard",
+    label: "글로벌 스토리보드",
+    description: "글로벌 시장을 위한 멀티컬처 광고 (15초)",
   },
 ];
 
 export type ShortVideoSettings = {
   concept?: ShortVideoConcept;
-  /** Free-text instruction layered on top of the concept (max 200 chars). */
+  /**
+   * For preset concepts: free-text instruction layered on top of the concept
+   * (max 200 chars). For `custom`: the user's full Seedance prompt (longer cap).
+   */
   additionalRequest?: string;
 };
 
