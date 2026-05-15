@@ -1,7 +1,6 @@
 # Lizy (리지) Design System
 
 > AI design agent for fast-moving consumer brands.
-> Surface name in product: **Agentic Creative**.
 
 ---
 
@@ -51,11 +50,8 @@ These three screens were the entire design source. **No codebase, no Figma, no l
 
 | Name | Where it shows up | Use |
 |---|---|---|
-| **Lizy** / **리지** | Marketing, conversational, "the agent's name" | Friendly product name; lowercase title-case `Lizy`. |
-| **Agentic Creative** | In-app wordmark, top-left of every screen | Formal product surface name. Set in `Manrope`, semibold-to-bold, tight tracking. |
+| **Lizy** / **리지** | Marketing, conversational, "the agent's name", in-app wordmark (top-left of every screen) | Friendly product name; `Lizy` in Fraunces italic with mint `y`. Paired with `Design Agent` subtitle in small-caps Korean-stack font with wide tracking. |
 | **AI Creative — Pro Plan** | Sidebar workspace label | Account/workspace context, not a brand. |
-
-Don't swap these. *Lizy* is the agent; *Agentic Creative* is the application chrome.
 
 ---
 
@@ -221,7 +217,7 @@ The product uses **a small, consistent set of line icons** (~1.5px stroke, round
 
 This system was built from **three screenshots only**. The following are best-guess and need confirmation:
 
-1. **Logo**: no Lizy / Agentic Creative logo file was provided. The wordmark in the screenshots is rendered as set type ("Agentic Creative" in Manrope-like bold). I've recreated it the same way; if there's a real logo asset, drop it into `assets/logo/` and update `ui_kits/web/Header.jsx`.
+1. **Logo**: no Lizy logo file was provided. The wordmark is rendered as set type — `Lizy` in Fraunces italic with mint `y`, plus a `Design Agent` subtitle. If there's a real logo asset, drop it into `assets/logo/` and update `ui_kits/web/Header.jsx`.
 2. **Fonts**: type spec card declares **Manrope** + **Inter**. I've loaded both from Google Fonts CDN. **Pretendard** for Korean is my pairing choice — also CDN-loaded. If the team uses different files (e.g. SUIT, IBM Plex Sans KR), please share `.woff2` files and I'll swap them into `fonts/`.
 3. **Iconography**: substituted with Lucide as documented above.
 4. **Colors not visible on the three screens**: I derived semantic states (success / warning / danger) from `--mint` and standard contrasts. None of these were visible in the source — confirm before shipping.

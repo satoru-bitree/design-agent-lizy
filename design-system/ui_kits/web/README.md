@@ -1,6 +1,6 @@
 # Lizy Web — UI Kit
 
-A pixel-recreation of the Lizy / Agentic Creative web app, built from the three product screenshots. The kit reproduces the **dashboard / 새 에셋 요청** working surface, the **스타일 샷 revision modal**, and the **에셋 생성 완료** review surface as one interactive click-through.
+A pixel-recreation of the Lizy web app, built from the three product screenshots. The kit reproduces the **dashboard / 새 에셋 요청** working surface, the **스타일 샷 revision modal**, and the **에셋 생성 완료** review surface as one interactive click-through.
 
 ## Files
 

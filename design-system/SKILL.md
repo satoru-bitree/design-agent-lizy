@@ -1,6 +1,6 @@
 ---
 name: lizy-design
-description: Use this skill to generate well-branded interfaces and assets for Lizy (리지) — the AI design agent product surfaced in-app as "Agentic Creative". Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for prototyping and production.
+description: Use this skill to generate well-branded interfaces and assets for Lizy (리지) — the AI design agent product. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for prototyping and production.
 user-invocable: true
 ---
 

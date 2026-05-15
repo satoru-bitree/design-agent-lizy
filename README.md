@@ -1,8 +1,8 @@
-# Lizy · Agentic Creative
+# Lizy
 
 > AI 디자인 에이전트 웹앱.
 > 제품 사진 한 장과 브랜드 파라미터 몇 개를 받아 시장별 패키지 디자인, 스타일 샷, 숏폼 영상을 일괄 생성합니다.
-> 인앱 워드마크는 **Agentic Creative**, 에이전트의 친근명은 **Lizy(리지)**.
+> 에이전트의 친근명은 **Lizy(리지)**, 인앱 워드마크는 `Lizy` (Fraunces italic) + `Design Agent` 부제.
 
 ---
 
@@ -49,7 +49,7 @@ npm run lint         # ESLint
 │  └─ preview/                     토큰 미리보기 HTML 카드
 │
 ├─ public/
-│  └─ logo/                        lizy-mark.svg, lockup.svg, agentic-creative-wordmark.svg
+│  └─ logo/                        lizy-mark.svg
 │
 ├─ src/
 │  ├─ app/
