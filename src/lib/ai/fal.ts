@@ -1401,6 +1401,8 @@ class FalProvider implements AIProvider {
     // "custom" preset: user-authored prompt mode. The free-text field carries
     // the entire prompt (not additive guidance). One submit with num_images=2
     // gives two different samples of the same prompt via seed randomization.
+    // Optional reference is wired in here only (dual-prompt presets ignore it
+    // because their master prompts are self-contained).
     if (input.styleShot?.preset === "custom") {
       const customPrompt = (input.styleShot?.additionalRequest ?? "").trim();
       if (!customPrompt) {
@@ -1409,10 +1411,17 @@ class FalProvider implements AIProvider {
           "직접 입력 모드에서는 프롬프트가 필요합니다.",
         );
       }
+      // When a reference image is supplied, image (1) is still the product
+      // (source of truth for identity, label, category) and image (2) is the
+      // style reference (mood/composition/lighting only). Without this guard
+      // gpt-image-2 edit tends to copy the reference's product or text.
+      const promptWithRef = referenceUrl
+        ? `Image (1) is the product — preserve its identity, label artwork, brand name, and category exactly. Image (2) is a STYLE REFERENCE for mood, composition, lighting, and color treatment only — do NOT copy its product, text, logo, or category.\n\n${customPrompt}`
+        : customPrompt;
       const submitted = await fal.queue.submit(model, {
         input: {
-          prompt: customPrompt,
-          image_urls: [productUrl],
+          prompt: promptWithRef,
+          image_urls: referenceUrl ? [productUrl, referenceUrl] : [productUrl],
           image_size: "square_hd",
           quality: "medium",
           num_images: 2,

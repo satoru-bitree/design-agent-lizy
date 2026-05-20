@@ -165,10 +165,14 @@ export function AssetUploadForm({
 
   const handleSubmit = () => {
     if (!file || assetTypes.size === 0 || brandStatus !== "ready") return;
-    // Only send refs for currently-selected types.
+    // Only send refs for currently-selected types. style_shot reference is
+    // only meaningful in "custom" preset — the dual-prompt presets in fal.ts
+    // intentionally ignore it, so drop it here to avoid uploading a file the
+    // backend will discard.
     const filteredRefs: Partial<Record<AssetType, File>> = {};
     for (const t of ASSET_TYPE_ORDER) {
       if (assetTypes.has(t) && referenceFiles[t]) {
+        if (t === "style_shot" && styleShotPreset !== "custom") continue;
         filteredRefs[t] = referenceFiles[t];
       }
     }
@@ -333,12 +337,18 @@ export function AssetUploadForm({
         {/* Per-asset-type style references (optional). Only render dropzones
             for asset types currently selected, so it's clear which ref applies
             where. short_video is excluded — seedance image-to-video doesn't
-            accept a reference input, so exposing the field would be misleading. */}
-        {(assetTypes.has("package") || assetTypes.has("style_shot")) && (
+            accept a reference input. style_shot only exposes the field in
+            "custom" preset — dual-prompt presets are self-contained and would
+            silently ignore the reference. */}
+        {(assetTypes.has("package") ||
+          (assetTypes.has("style_shot") && styleShotPreset === "custom")) && (
           <Field label="스타일 레퍼런스 (선택)">
             <div className="flex flex-col gap-2">
               {ASSET_TYPE_ORDER.filter(
-                (t) => assetTypes.has(t) && t !== "short_video",
+                (t) =>
+                  assetTypes.has(t) &&
+                  t !== "short_video" &&
+                  (t !== "style_shot" || styleShotPreset === "custom"),
               ).map((t) => (
                 <ReferenceRow
                   key={t}
