@@ -110,6 +110,29 @@ npm run lint         # ESLint
 
 ---
 
+## AI 모델 / 기능
+
+모든 AI 호출은 [src/lib/ai/](src/lib/ai/) 의 `AIProvider` 인터페이스를 통해 라우팅됩니다. `AI_MODE` + `FAL_KEY` 조합으로 mock ↔ fal 분기 ([index.ts](src/lib/ai/index.ts)). 키가 없으면 전부 mock fallback.
+
+### 생성 모델 (사용자 산출물)
+
+| 기능 | JobKind | fal 엔드포인트 | 비고 |
+|---|---|---|---|
+| 라벨 / 패키지 | `package` | `openai/gpt-image-2/edit` | 출력 후 `fal-ai/aura-sr` 4x 업스케일 (~6144×4096, 인쇄 대비) |
+| 스타일샷 | `style_shot` | `openai/gpt-image-2/edit` | 듀얼 프리셋(`usage_scene`/`styling_props`/`editorial_text`)은 A·B 프롬프트 병렬 submit, jobId를 `~`로 결합 |
+| 숏폼 영상 | `short_video` | `bytedance/seedance-2.0/image-to-video` | `custom`은 duration auto, `global_storyboard`는 15초 멀티컬처 8-beat |
+
+### 분석 / 해석 모델 (보조)
+
+| 기능 | 엔드포인트 | 호출 위치 |
+|---|---|---|
+| 브랜드 가이드 자동 추출 (`extractBrandGuide`) | `nvidia/nemotron-3-nano-omni/vision` | [fal.ts](src/lib/ai/fal.ts) |
+| 로고 섹션 해석 (`interpretBrandSection` — logo) | `nvidia/nemotron-3-nano-omni/vision` | 같음 |
+| 팔레트 / 타이포 / 무드 텍스트 해석 | `fal-ai/any-llm` (`google/gemini-2.0-flash-001`) | 같음 |
+| 제품 이미지 자동 디스크립션 (라벨 프롬프트 보강) | `nvidia/nemotron-3-nano-omni/vision` (3-line, `reasoning_mode:"think"`) | `describeProduct()` |
+
+---
+
 ## 디자인 토큰 매핑
 
 CSS 변수는 [src/app/globals.css](src/app/globals.css) `:root` 에 정의되어 있고, Tailwind 유틸리티는 [tailwind.config.ts](tailwind.config.ts) 에서 매핑됩니다. **단일 진실 소스는 [design-system/colors_and_type.css](design-system/colors_and_type.css).**
