@@ -839,6 +839,51 @@ function buildLabelPrompt(
   const hint = (info?.hint ?? "").trim();
   const wordmark = (info?.productName ?? "").trim();
 
+  // Reference path: drastically slimmed prompt. Let image (2) drive layout,
+  // decorative motifs, density, illustration treatment, typography. We only
+  // enforce hard business locks (image (1) product identity, brand palette,
+  // market language, 수출용 marker, barcode, flat output format). Over-
+  // prescribing here crowds out the reference — observed empirically when the
+  // detailed prompt below was reused for the reference case.
+  if (opts.hasReference) {
+    const referenceLines: (string | null)[] = [
+      `Create a flat, print-ready CONSUMER PRODUCT LABEL ARTWORK for the product shown in image (1), using image (2) as the DESIGN TEMPLATE. Mirror image (2)'s overall layout, decorative motifs, illustration treatment, design density, and typographic flourishes — the output should feel like a sibling design to image (2), applied to image (1)'s product.`,
+      `NOT a product mockup. NOT a 3D render. NOT a photograph of the product wearing the label. The output is the flat label artwork itself, ready to be wrapped onto a container.`,
+      "",
+      `IMAGE (1) — ACTUAL PRODUCT (source of truth for product identity):`,
+      wordmark
+        ? `  • Product wordmark: "${wordmark}" — render verbatim as the visual hero, in whatever position image (2) places its dominant wordmark. Keep its original script. Do NOT translate. Do NOT replace with a translated descriptor.`
+        : `  • Product name: derived from image (1)'s existing packaging — render verbatim as the visual hero, in whatever position image (2) places its dominant wordmark. Keep its original script.`,
+      hint ? `  • Auxiliary AI hint (low-confidence): ${hint}` : null,
+      `  • Match the product's actual category (e.g. a red paste is a red-pepper product, NOT a brown soybean product; a clear liquid is a beverage, NOT a sauce). Ingredient list, usage suggestions, and nutrition values must be plausible for THIS product's category — NOT image (2)'s category.`,
+      "",
+      `IMAGE (2) — DESIGN REFERENCE (source of truth for visual language):`,
+      `  • Mirror its LAYOUT — where the wordmark, product visual, info/nutrition panels, and footer sit. If image (2) places the wordmark on the LEFT and product visual in the CENTER, do that here too. Do NOT default to a centered wordmark if image (2) puts it elsewhere.`,
+      `  • Mirror its DECORATIVE MOTIFS — ribbons, seals, badges, ornamental frames, curved banner text, circular product windows, corner flourishes, divider rules. Recreate analogous elements in similar positions.`,
+      `  • Mirror its ILLUSTRATION TREATMENT (photographic / vector / watercolor / flat illustration) and DESIGN DENSITY (sparse minimal vs editorial-dense with sub-callouts).`,
+      `  • Mirror its TYPOGRAPHIC FLOURISHES — italic script accents, curved sub-headlines, all-caps display, boxed/outlined subtitle plates.`,
+      `  • Do NOT copy image (2)'s text content, product category, brand name, or its primary background fill color. Take its design language, not its identity.`,
+      "",
+      `MANDATORY OVERRIDES (apply regardless of image (2)):`,
+      `- Brand: ${brand} (from brand guide) — render as a SMALL secondary mark (small lockup near the product wordmark OR a corner badge). NEVER the hero. The product wordmark from image (1) is the hero.`,
+      `- Brand colors: ${palette}. Apply as the dominant color scheme of the label — these brand colors override image (2)'s primary palette. If image (2) uses metallic decorative accents (gold / copper / silver), you may keep them as overlay ornaments.`,
+      `- Target market: ${market}. ALL marketing copy, headings, body text, ingredient list, nutrition labels, allergen lines — every piece of text on the label — MUST be written in ${lang.label} (${lang.code}). Do NOT use Korean. Do NOT use English unless ${lang.code} is en-US. Use natural, idiomatic ${lang.label} as it would appear on a real ${lang.label}-language retail product, with market-appropriate units (ml/g) and number formatting.`,
+      `- The ONLY exceptions allowed in non-${lang.code} script: (a) the brand wordmark (Latin); (b) website URL.`,
+      g.moodCaption ? `- Brand visual mood: ${g.moodCaption}.` : null,
+      brandMessage ? `- Brand message to convey throughout the copy: "${brandMessage}".` : null,
+      "",
+      `OUTPUT FORMAT:`,
+      `- Single 4:3 landscape canvas.`,
+      `- Photorealistic print-quality look, all text crisp and legible, properly spelled.`,
+      `- Clean white background outside the colored label area.`,
+      `- No 3D mockup, no drop shadow under the label, no product photo composed on top, no extra captions/watermarks.`,
+      revision?.note ? `Revision request: ${revision.note}.` : null,
+      revision?.quickFix ? `Quick fix: ${revision.quickFix}.` : null,
+    ];
+    return referenceLines.filter((l): l is string => l !== null).join("\n");
+  }
+
+  // No-reference path: single input image, fully self-contained detailed prompt.
   const lines: (string | null)[] = [
     `Generate a flat, print-ready CONSUMER PRODUCT LABEL ARTWORK — an unfolded packaging spread laid out as a single horizontal canvas (front panel + side panels visible flat, like a printer's die-line).`,
     `NOT a product mockup. NOT a 3D render. NOT a photograph of the product wearing the label. The output is the flat label artwork itself, ready to be wrapped onto a container.`,
@@ -851,18 +896,7 @@ function buildLabelPrompt(
       : null,
     `  • Design the label for the product visible in image (1). Match its actual category (a red paste is a red-pepper product, NOT a brown soybean product; a clear liquid is a beverage, NOT a sauce; etc.). Copy ingredient list, usage suggestions, and Nutrition Facts values from what is plausible for THAT category. Do NOT design a label for a different product category just because the AI hint or the style reference suggests one.`,
     "",
-    opts.hasReference
-      ? `INPUT IMAGES (in order):`
-      : null,
-    opts.hasReference
-      ? `  (1) ACTUAL PRODUCT — the source of truth (see above). Use to determine product category, container shape, current packaging cues, scale.`
-      : null,
-    opts.hasReference
-      ? `  (2) STYLE REFERENCE label — borrow its LAYOUT STRUCTURE only: panel proportions, illustration treatment, design density, where the wordmark / Nutrition Facts / bottom band sit. Do NOT copy the reference's product category, text, brand name, or colors. The reference may show a totally different product (e.g. broth) — the layout DNA is what you take, the product identity comes from image (1).`
-      : null,
-    !opts.hasReference
-      ? `The single input image is the ACTUAL PRODUCT for which we are designing this label. Use it to read container shape, current packaging cues, and product category. Do not paste the product photo onto the canvas; generate a complete original flat label artwork for it.`
-      : null,
+    `The single input image is the ACTUAL PRODUCT for which we are designing this label. Use it to read container shape, current packaging cues, and product category. Do not paste the product photo onto the canvas; generate a complete original flat label artwork for it.`,
     "",
     `LAYOUT (single horizontal canvas, brand-color background filling the label, thin white outer margin):`,
     `1) CENTER HERO — the PRODUCT WORDMARK, taken from the source product:`,
@@ -1092,6 +1126,46 @@ class FalProvider implements AIProvider {
     input: BrandSectionInterpretInput,
   ): Promise<BrandSectionInterpretResult> {
     if (!FAL_KEY) return mockProvider.interpretBrandSection(input);
+
+    // Logo section is image-based: upload to fal CDN, run vision LLM to
+    // extract brandName + wordmark style. Mirrors the (legacy)
+    // extractBrandGuide path but scoped to logo fields only.
+    if (input.section === "logo") {
+      if (!input.imageDataUrl || !isVisionMime(input.mimeType)) {
+        return mockProvider.interpretBrandSection(input);
+      }
+      try {
+        const imageUrl = await uploadDataUrl(
+          input.imageDataUrl,
+          input.fileName || "brand-logo.png",
+        );
+        const result = await fal.subscribe(
+          "nvidia/nemotron-3-nano-omni/vision",
+          {
+            input: {
+              prompt: LOGO_ANALYSIS_PROMPT,
+              image_url: imageUrl,
+              system_prompt: BRAND_ANALYSIS_SYSTEM,
+              reasoning_mode: "no_think",
+              max_tokens: 512,
+              temperature: 0.2,
+            },
+          },
+        );
+        const text =
+          (result.data as { output?: string } | undefined)?.output ?? "";
+        const parsed = parseLogoJson(text);
+        if (parsed) return { section: "logo", ...parsed };
+        console.warn(
+          "[fal] interpretBrandSection(logo): malformed JSON, falling back. raw:",
+          text.slice(0, 200),
+        );
+        return mockProvider.interpretBrandSection(input);
+      } catch (e) {
+        console.error("[fal] interpretBrandSection(logo) failed:", e);
+        return mockProvider.interpretBrandSection(input);
+      }
+    }
 
     try {
       const { systemPrompt, userPrompt } = sectionPrompt(input);
@@ -1891,7 +1965,11 @@ async function describeProduct(productUrl: string): Promise<ProductInfo> {
 /* Brand-guide vision analysis                                                */
 /* -------------------------------------------------------------------------- */
 
-function isVisionMime(mime: string): boolean {
+function isVisionMime(mime: string | undefined): boolean {
+  // mime is optional for the logo interpret path — caller may not know it
+  // (e.g. compressed dataURL with no original blob). Default to allowed when
+  // unknown; the data URL itself is the source of truth.
+  if (!mime) return true;
   return mime === "image/png" || mime === "image/jpeg" || mime === "image/jpg";
 }
 
@@ -2106,6 +2184,95 @@ function numClamp(v: unknown, fallback: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
+// Subset of BRAND_ANALYSIS_PROMPT — only the logo/wordmark fields. Used by
+// interpretBrandSection(section="logo") in the new sectional brand-guide
+// flow. Returning the bare logo subset keeps the response tiny + parsing
+// simple; palette/typography/mood are extracted separately by their own
+// text-driven sections.
+const LOGO_ANALYSIS_PROMPT = `Analyze this brand logo image and extract the brand identity. Respond with STRICT JSON only — no markdown, no code fences, no commentary.
+
+Required JSON shape:
+{
+  "brandName": string,
+  "logoWordmark": {
+    "text": string,
+    "family": string,
+    "color": string,
+    "weight": 400|500|600|700|800,
+    "italic": boolean,
+    "tracking": number
+  }
+}
+
+Rules:
+- "brandName" is the human-readable brand/company name as it appears on the logo.
+- "logoWordmark.text" is the wordmark text rendered in the logo (often identical to brandName but may differ in casing or stylization).
+- All hex values uppercase #RRGGBB (7 chars including #).
+- "weight" is the closest match from the listed values.
+- "tracking" is in em units, typically between -0.04 and 0.06.
+
+FONT RULES (very important):
+- "logoWordmark.family" MUST be picked from this allowlist of Google Fonts. Pick the closest visual match — do NOT invent or use any other font:
+  ${FONT_ALLOWLIST_FOR_PROMPT}
+- Output the bare family name only (e.g. "Playfair Display", "Bebas Neue") — no fallbacks, no quotes, no "sans-serif" suffix.
+
+Output JSON only.`;
+
+type ParsedLogo = {
+  brandName: string;
+  logoWordmark: {
+    text: string;
+    family: string;
+    color: string;
+    weight: 400 | 500 | 600 | 700 | 800;
+    italic: boolean;
+    tracking: number;
+  };
+};
+
+function parseLogoJson(raw: string): ParsedLogo | null {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const o = parsed as Record<string, unknown>;
+  const wm = o.logoWordmark as Record<string, unknown> | undefined;
+  if (!wm || typeof wm.text !== "string" || wm.text.length === 0) return null;
+
+  const weightCandidate = Number(wm.weight);
+  const weight = ([400, 500, 600, 700, 800] as const).includes(
+    weightCandidate as 400 | 500 | 600 | 700 | 800,
+  )
+    ? (weightCandidate as 400 | 500 | 600 | 700 | 800)
+    : 700;
+
+  const color =
+    typeof wm.color === "string" && /^#[0-9a-fA-F]{6}$/.test(wm.color as string)
+      ? (wm.color as string).toUpperCase()
+      : "#111111";
+
+  return {
+    brandName:
+      typeof o.brandName === "string" && o.brandName.length > 0
+        ? (o.brandName as string)
+        : (wm.text as string),
+    logoWordmark: {
+      text: wm.text as string,
+      family: typeof wm.family === "string" ? (wm.family as string) : "Inter",
+      color,
+      weight,
+      italic: Boolean(wm.italic),
+      tracking: typeof wm.tracking === "number" ? (wm.tracking as number) : -0.02,
+    },
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Brand-section natural-language interpretation                              */
 /* -------------------------------------------------------------------------- */
@@ -2113,7 +2280,12 @@ function numClamp(v: unknown, fallback: number): number {
 const SECTION_SYSTEM =
   "You translate free-form Korean or English brand briefs into structured JSON for a single brand section. Respond with JSON only — no prose, no markdown, no code fences.";
 
-function sectionPrompt(input: BrandSectionInterpretInput): {
+// Logo section is handled separately by the vision-LLM path in
+// interpretBrandSection — sectionPrompt only builds the text-driven
+// any-llm prompts (palette/typography/mood).
+function sectionPrompt(
+  input: Exclude<BrandSectionInterpretInput, { section: "logo" }>,
+): {
   systemPrompt: string;
   userPrompt: string;
 } {
@@ -2178,7 +2350,7 @@ function snapAllowlist(family: string): string | null {
 }
 
 function parseSectionJson(
-  section: BrandSectionInterpretInput["section"],
+  section: Exclude<BrandSectionInterpretInput, { section: "logo" }>["section"],
   raw: string,
 ): BrandSectionInterpretResult | null {
   const start = raw.indexOf("{");

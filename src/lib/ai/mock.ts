@@ -246,6 +246,22 @@ function pickPreset(text: string): MoodPreset {
 function interpretBrandSectionMock(
   input: BrandSectionInterpretInput,
 ): BrandSectionInterpretResult {
+  // Logo section is image-based — no usable text to parse. Mock just returns
+  // a generic placeholder so the brand-guide flow stays functional offline.
+  if (input.section === "logo") {
+    return {
+      section: "logo",
+      brandName: "BRAND",
+      logoWordmark: {
+        text: "BRAND",
+        family: "Inter",
+        color: "#111111",
+        weight: 700,
+        italic: false,
+        tracking: -0.02,
+      },
+    };
+  }
   const text = input.text.trim();
   if (input.section === "palette") {
     const literal = parsePaletteText(text);

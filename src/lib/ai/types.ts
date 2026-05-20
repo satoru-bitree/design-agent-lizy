@@ -32,16 +32,39 @@ export type BrandExtractionResult = {
  * "적용" flow on the brand-guide panel — the user describes the section in
  * Korean/English ("따뜻한 가을 톤", "luxury serif"), the provider returns
  * the matching palette / typography / caption.
+ *
+ * The `logo` variant is image-based — the user uploads a brand logo image
+ * and a vision LLM extracts the brand name and wordmark style. This is
+ * what feeds `BrandGuide.brandName` / `BrandGuide.logoWordmark` so the
+ * label-generation prompt can reference the brand verbally.
  */
 export type BrandSectionInterpretInput =
   | { section: "palette"; text: string }
   | { section: "typography"; text: string }
-  | { section: "mood"; text: string };
+  | { section: "mood"; text: string }
+  | {
+      section: "logo";
+      imageDataUrl: string;
+      fileName: string;
+      mimeType?: string;
+    };
 
 export type BrandSectionInterpretResult =
   | { section: "palette"; palette: { hex: string; name?: string }[] }
   | { section: "typography"; typography: { heading: string; body: string } }
-  | { section: "mood"; moodCaption: string };
+  | { section: "mood"; moodCaption: string }
+  | {
+      section: "logo";
+      brandName: string;
+      logoWordmark: {
+        text: string;
+        family: string;
+        color: string;
+        weight: 400 | 500 | 600 | 700 | 800;
+        italic: boolean;
+        tracking: number;
+      };
+    };
 
 /**
  * Style-shot generation modes. Exactly one is required when the user opts in

@@ -7,12 +7,16 @@ export const runtime = "nodejs";
 type Body = {
   section?: unknown;
   text?: unknown;
+  imageDataUrl?: unknown;
+  fileName?: unknown;
+  mimeType?: unknown;
 };
 
 const SECTIONS = new Set<BrandSectionInterpretInput["section"]>([
   "palette",
   "typography",
   "mood",
+  "logo",
 ]);
 
 export async function POST(req: Request) {
@@ -31,22 +35,50 @@ export async function POST(req: Request) {
     !SECTIONS.has(body.section as BrandSectionInterpretInput["section"])
   ) {
     return NextResponse.json(
-      { code: "INVALID_INPUT", message: "section must be palette|typography|mood" },
-      { status: 400 },
-    );
-  }
-  if (typeof body.text !== "string" || body.text.trim().length === 0) {
-    return NextResponse.json(
-      { code: "INVALID_INPUT", message: "text is required" },
+      {
+        code: "INVALID_INPUT",
+        message: "section must be palette|typography|mood|logo",
+      },
       { status: 400 },
     );
   }
 
+  const section = body.section as BrandSectionInterpretInput["section"];
+
   try {
-    const result = await ai.interpretBrandSection({
-      section: body.section as BrandSectionInterpretInput["section"],
-      text: body.text,
-    });
+    let input: BrandSectionInterpretInput;
+    if (section === "logo") {
+      if (
+        typeof body.imageDataUrl !== "string" ||
+        body.imageDataUrl.length === 0
+      ) {
+        return NextResponse.json(
+          {
+            code: "INVALID_INPUT",
+            message: "imageDataUrl is required for logo section",
+          },
+          { status: 400 },
+        );
+      }
+      input = {
+        section: "logo",
+        imageDataUrl: body.imageDataUrl,
+        fileName:
+          typeof body.fileName === "string" ? body.fileName : "brand-logo.png",
+        mimeType:
+          typeof body.mimeType === "string" ? body.mimeType : undefined,
+      };
+    } else {
+      if (typeof body.text !== "string" || body.text.trim().length === 0) {
+        return NextResponse.json(
+          { code: "INVALID_INPUT", message: "text is required" },
+          { status: 400 },
+        );
+      }
+      input = { section, text: body.text };
+    }
+
+    const result = await ai.interpretBrandSection(input);
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof AIError) {

@@ -33,8 +33,26 @@ export type BrandSectionImage = {
   dataUrl: string;
 };
 
+export type BrandLogoResult = {
+  brandName: string;
+  logoWordmark: {
+    text: string;
+    family: string;
+    color: string;
+    weight: 400 | 500 | 600 | 700 | 800;
+    italic: boolean;
+    tracking: number;
+  };
+};
+
 export type BrandLogoSection = {
   image: BrandSectionImage | null;
+  /** Vision-LLM extracted brand identity. Populated async on upload. */
+  result: BrandLogoResult | null;
+  /** True while the interpret call is in flight. */
+  applying: boolean;
+  /** Last interpret error (Korean). */
+  error: string | null;
 };
 
 /**
@@ -85,9 +103,16 @@ const EMPTY_GUIDE: BrandGuide = {
   moodboard: [],
 };
 
+const INITIAL_LOGO: BrandLogoSection = {
+  image: null,
+  result: null,
+  applying: false,
+  error: null,
+};
+
 const INITIAL_BRAND: BrandState = {
   status: "idle",
-  logo: { image: null },
+  logo: INITIAL_LOGO,
   palette: {
     image: null,
     text: "",
@@ -119,12 +144,18 @@ function deriveGuide(
   next: Pick<BrandState, "logo" | "palette" | "typography" | "mood">,
 ): BrandGuide {
   const moodboard = next.mood.image ? [next.mood.image.dataUrl] : [];
+  const logoResult = next.logo.result;
   return {
     logo: next.logo.image?.dataUrl ?? "",
     palette: next.palette.result,
     typography: next.typography.result ?? EMPTY_GUIDE.typography,
     moodboard,
     ...(next.mood.result ? { moodCaption: next.mood.result } : {}),
+    // Brand identity from logo interpret. Without these, fal's label prompt
+    // falls back to the literal "BRAND" placeholder and renders nothing for
+    // the secondary brand mark.
+    ...(logoResult ? { brandName: logoResult.brandName } : {}),
+    ...(logoResult ? { logoWordmark: logoResult.logoWordmark } : {}),
   };
 }
 
@@ -283,7 +314,17 @@ export const useJobsStore = create<Store>()(
 
           const nextSections =
             section === "logo"
-              ? { ...state.brand, logo: { image } }
+              ? {
+                  ...state.brand,
+                  // New logo image → drop any stale brandName/wordmark; the
+                  // interpret call kicked off below will repopulate.
+                  logo: {
+                    image,
+                    result: null,
+                    applying: true,
+                    error: null,
+                  } satisfies BrandLogoSection,
+                }
               : { ...state.brand, [section]: { ...prev, image } };
 
           return {
@@ -294,6 +335,16 @@ export const useJobsStore = create<Store>()(
             },
           };
         });
+
+        // Logo section: fire the vision-LLM interpret in the background so
+        // brandName + logoWordmark land in the guide before generation.
+        if (section === "logo") {
+          void interpretLogoImage(set, {
+            imageDataUrl: dataUrl,
+            fileName: file.name,
+            mimeType: file.type || undefined,
+          });
+        }
       },
 
       setBrandSectionText: (section, text) => {
@@ -359,7 +410,7 @@ export const useJobsStore = create<Store>()(
 
           const nextSections =
             section === "logo"
-              ? { ...state.brand, logo: { image: null } }
+              ? { ...state.brand, logo: INITIAL_LOGO }
               : { ...state.brand, [section]: { ...cur, image: null } };
           return {
             brand: {
@@ -683,6 +734,63 @@ export const useJobsStore = create<Store>()(
 type Setter = (partial: any) => void;
 
 /**
+ * Fire the logo-section interpret call against /api/brand/interpret and
+ * patch the result back into brand.logo. Triggered automatically from
+ * uploadBrandSectionImage("logo", ...) — the user never sees a button for
+ * this; the brand name + wordmark style appear in the panel as soon as
+ * the vision LLM responds. Errors leave the image in place but mark the
+ * section idle so the user can retry by re-uploading.
+ */
+async function interpretLogoImage(
+  set: Setter,
+  payload: { imageDataUrl: string; fileName: string; mimeType?: string },
+): Promise<void> {
+  try {
+    const res = await fetch("/api/brand/interpret", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        section: "logo",
+        imageDataUrl: payload.imageDataUrl,
+        fileName: payload.fileName,
+        ...(payload.mimeType ? { mimeType: payload.mimeType } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      throw new Error(err?.message ?? "로고 해석에 실패했습니다.");
+    }
+    const data = (await res.json()) as BrandSectionInterpretResult;
+    if (data.section !== "logo") {
+      throw new Error("로고 해석 응답 형식이 올바르지 않습니다.");
+    }
+    set((state: { brand: BrandState }) => {
+      const nextBrand: BrandState = {
+        ...state.brand,
+        logo: {
+          ...state.brand.logo,
+          result: { brandName: data.brandName, logoWordmark: data.logoWordmark },
+          applying: false,
+          error: null,
+        },
+      };
+      return { brand: { ...nextBrand, guide: deriveGuide(nextBrand) } };
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "로고 해석에 실패했습니다.";
+    console.error("[brand] interpretLogoImage failed:", message);
+    set((state: { brand: BrandState }) => ({
+      brand: {
+        ...state.brand,
+        logo: { ...state.brand.logo, applying: false, error: message },
+      },
+    }));
+  }
+}
+
+/**
  * Patch a section with its interpreted result, mark applied=draft, drop
  * applying/error, and rederive the brand guide. Section-typed so the result
  * shape matches the section's `result` slot exactly.
@@ -767,7 +875,9 @@ function stripBrandImages(brand: BrandState): BrandState {
   // resets to false — a half-fired apply doesn't survive refresh. error too.
   const stripped: BrandState = {
     status: "idle",
-    logo: { image: null },
+    // Keep the logo `result` (brandName/wordmark) across refresh — only the
+    // image blob is too transient to persist. applying/error reset.
+    logo: { ...brand.logo, image: null, applying: false, error: null },
     palette: {
       ...brand.palette,
       image: null,
