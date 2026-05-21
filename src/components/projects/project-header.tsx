@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
+import { ImageLightbox } from "@/components/projects/image-lightbox";
 import { cn } from "@/lib/utils";
 import type { ProjectStatus } from "@/lib/mock-data";
 
@@ -16,13 +17,19 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 export function ProjectHeader({
   name,
   status,
+  productImageUrl,
   onDelete,
 }: {
   name: string;
   status: ProjectStatus;
+  /** Original product image the user uploaded. Renders an "원본 보기" chip
+   * that opens a lightbox. Hidden entirely when missing (e.g. mock mode after
+   * refresh — we don't fake it with a generated variant). */
+  productImageUrl?: string | null;
   onDelete?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const headingPrefix =
     status === "review" || status === "approved"
@@ -83,6 +90,28 @@ export function ProjectHeader({
         <span className="inline-flex items-center rounded-pill border border-mint px-2.5 py-1 font-kr text-[11px] font-medium text-mint">
           {STATUS_LABEL[status]}
         </span>
+        {productImageUrl && (
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            aria-label="원본 이미지 보기"
+            className="group inline-flex items-center gap-2 rounded-pill border border-border bg-surface-2 py-1 pl-1 pr-3 outline-none transition-colors duration-micro ease-lz hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+          >
+            <span className="h-5 w-5 overflow-hidden rounded-sm bg-bg">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={productImageUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            </span>
+            <span className="font-kr text-[11px] text-fg-dim transition-colors duration-micro ease-lz group-hover:text-fg">
+              원본 보기
+            </span>
+          </button>
+        )}
         <span className="inline-flex items-center gap-2 font-kr text-[13px] text-fg-dim">
           <StatusDot tone={monitoringActive ? "active" : "pending"} />
           {monitoringActive
@@ -90,6 +119,16 @@ export function ProjectHeader({
             : "에이전트가 에셋을 생성 중입니다"}
         </span>
       </div>
+
+      {productImageUrl && (
+        <ImageLightbox
+          open={lightboxOpen}
+          onOpenChange={setLightboxOpen}
+          src={productImageUrl}
+          alt={`${name} 원본 이미지`}
+          caption="업로드한 원본 제품 이미지"
+        />
+      )}
     </header>
   );
 }

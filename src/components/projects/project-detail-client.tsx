@@ -80,11 +80,20 @@ export function ProjectDetailClient({
           jobs,
         );
       });
+      // Only the actual uploaded source — no variant fallback here. If the
+      // mock-mode user refreshed and lost the in-memory dataUrl, we'd rather
+      // hide the "원본 보기" chip than mislead them with a generated image.
+      const productImageUrl =
+        generated.product.remoteUrl ??
+        generated.product.dataUrl ??
+        generated.product.objectUrl ??
+        null;
       return {
         name: generated.name,
         status: deriveProjectStatus(generated, jobs),
         assetTypes: generated.assetTypes,
         views: views as Record<AssetType, AssetView>,
+        productImageUrl,
       };
     }
     if (fallbackProject) {
@@ -101,6 +110,7 @@ export function ProjectDetailClient({
         status: fallbackProject.status,
         assetTypes: fallbackProject.assetTypes,
         views: views as Record<AssetType, AssetView>,
+        productImageUrl: null,
       };
     }
     return null;
@@ -115,6 +125,7 @@ export function ProjectDetailClient({
       <ProjectHeader
         name={data.name}
         status={data.status}
+        productImageUrl={data.productImageUrl}
         onDelete={generated ? handleDelete : undefined}
       />
       <ReviewBoard
