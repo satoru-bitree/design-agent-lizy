@@ -2,7 +2,14 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Folder, Package, Camera, Film, type LucideIcon } from "lucide-react";
+import {
+  Folder,
+  Image as ImageIcon,
+  Package,
+  Camera,
+  Film,
+  type LucideIcon,
+} from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
   deriveProjectStatus,
@@ -46,12 +53,13 @@ export function ProjectsListClient() {
       {list.length === 0 ? (
         <EmptyState />
       ) : (
-        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {list.map((project) => (
             <li key={project.id}>
               <ProjectCard
                 project={project}
                 status={deriveProjectStatus(project, jobs)}
+                heroUrl={pickHeroUrl(project)}
               />
             </li>
           ))}
@@ -66,48 +74,95 @@ export function ProjectsListClient() {
 function ProjectCard({
   project,
   status,
+  heroUrl,
 }: {
   project: GenerationProject;
   status: ProjectStatus;
+  heroUrl: string | null;
 }) {
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="group flex h-full flex-col gap-4 rounded-xl border border-border bg-surface-1 p-5 outline-none transition-colors duration-micro ease-lz hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+      className="group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-surface-1 outline-none transition-colors duration-micro ease-lz hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
     >
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="line-clamp-2 flex-1 font-kr text-h3 font-bold leading-[1.35] text-fg">
-          {project.name}
-        </h3>
-        <StatusBadge status={status} />
-      </div>
+      <HeroCover url={heroUrl} />
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {project.assetTypes.map((kind) => {
-          const Icon = KIND_ICON[kind];
-          return (
-            <span
-              key={kind}
-              className="inline-flex items-center gap-1.5 font-kr text-meta text-fg-dim"
-            >
-              <Icon
-                className="h-3.5 w-3.5 text-fg-muted"
-                strokeWidth={1.5}
-              />
-              {KIND_LABEL[kind]}
-            </span>
-          );
-        })}
-      </div>
+      <div className="flex flex-1 flex-col gap-3 p-5">
+        <div className="flex items-start gap-3">
+          <h3 className="line-clamp-2 min-w-0 flex-1 font-kr text-h3 font-bold leading-[1.35] text-fg">
+            {project.name}
+          </h3>
+          <StatusBadge status={status} />
+        </div>
 
-      <div className="mt-auto flex items-center justify-between border-t border-border pt-3 text-meta">
-        <span className="font-kr text-fg-muted">{project.market}</span>
-        <span className="font-mono text-fg-muted">
-          {formatRelative(project.createdAt)}
-        </span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {project.assetTypes.map((kind) => {
+            const Icon = KIND_ICON[kind];
+            return (
+              <span
+                key={kind}
+                className="inline-flex items-center gap-1.5 font-kr text-meta text-fg-dim"
+              >
+                <Icon
+                  className="h-3.5 w-3.5 text-fg-muted"
+                  strokeWidth={1.5}
+                />
+                {KIND_LABEL[kind]}
+              </span>
+            );
+          })}
+        </div>
+
+        <div className="mt-auto flex items-center justify-between text-meta">
+          <span className="font-kr text-fg-muted">{project.market}</span>
+          <span className="font-mono text-fg-muted">
+            {formatRelative(project.createdAt)}
+          </span>
+        </div>
       </div>
     </Link>
   );
+}
+
+/* -------------------------------------------------------------------------- */
+
+function HeroCover({ url }: { url: string | null }) {
+  if (!url) {
+    return (
+      <div className="flex aspect-[4/3] w-full items-center justify-center bg-surface-2 text-fg-muted">
+        <ImageIcon className="h-8 w-8" strokeWidth={1.5} />
+      </div>
+    );
+  }
+  return (
+    <div className="relative aspect-[4/3] w-full overflow-hidden bg-surface-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        className="h-full w-full object-contain transition-transform duration-page ease-lz group-hover:scale-[1.03]"
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+/** Pick the hero image for the card — always the uploaded original product.
+ *  Identification matters more than showcase in a list view (results live in
+ *  the detail page), and the original is stable across revisions.
+ *
+ *  Fallback order: `remoteUrl` (persistent CDN, survives refresh) → in-memory
+ *  `objectUrl` for the brief window before /api/jobs returns → placeholder.
+ *  `dataUrl` is intentionally skipped — it would inline hundreds of KB of
+ *  base64 into the DOM per card; `objectUrl` covers the same session window
+ *  with a tiny blob: pointer.
+ */
+function pickHeroUrl(project: GenerationProject): string | null {
+  const p = project.product;
+  return p.remoteUrl ?? p.objectUrl ?? null;
 }
 
 /* -------------------------------------------------------------------------- */
