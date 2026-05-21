@@ -266,6 +266,14 @@ type Store = {
 
   submitGeneration: (input: SubmitInput) => Promise<string>;
   submitRevision: (input: SubmitRevisionInput) => Promise<void>;
+  /**
+   * Re-run the original /api/jobs POST for a single asset whose generation
+   * failed (either at startup or mid-run). Reuses the project's stored input
+   * so the user doesn't have to re-enter anything; clears the failure marker
+   * optimistically so the card flips back to a queued/loading state right
+   * away.
+   */
+  retryGeneration: (projectId: string, kind: AssetType) => Promise<void>;
   pollJob: (jobId: string) => Promise<void>;
   removeProject: (projectId: string) => void;
 };
@@ -634,6 +642,54 @@ export const useJobsStore = create<Store>()(
           // observable in DevTools instead of vanishing silently.
           console.error("[jobs-store] submitRevision failed:", e);
         }
+      },
+
+      retryGeneration: async (projectId: string, kind: AssetType) => {
+        const project = get().generationProjects[projectId];
+        if (!project) return;
+
+        const previousJobId = project.jobIds[kind];
+
+        // Optimistic clear — drop the failed marker and any stale job entry
+        // so the card flips to a queued/skeleton state immediately, mirroring
+        // submitRevision's pattern. Without this the failed pill lingers
+        // until /api/jobs returns (~5–10s).
+        set((state) => {
+          const cur = state.generationProjects[projectId];
+          if (!cur) return state;
+          const nextStartErrors = { ...cur.startErrors };
+          delete nextStartErrors[kind];
+          const nextJobIds = { ...cur.jobIds };
+          delete nextJobIds[kind];
+          const nextJobs = { ...state.jobs };
+          if (previousJobId) delete nextJobs[previousJobId];
+          return {
+            jobs: nextJobs,
+            generationProjects: {
+              ...state.generationProjects,
+              [projectId]: {
+                ...cur,
+                jobIds: nextJobIds,
+                startErrors: nextStartErrors,
+              },
+            },
+          };
+        });
+
+        // Rebuild a SubmitInput from the persisted project so kickOffKind
+        // hits the same prompt path it did the first time. We deliberately
+        // don't synthesize new settings — retry == redo with the same brief.
+        const input: SubmitInput = {
+          product: project.product,
+          references: project.references,
+          market: project.market,
+          brandMessage: project.brandMessage,
+          brandGuide: project.brandGuide,
+          assetTypes: [kind],
+          styleShotSettings: project.styleShotSettings,
+          shortVideoSettings: project.shortVideoSettings,
+        };
+        await kickOffKind(projectId, kind, input, set);
       },
 
       removeProject: (projectId: string) => {
@@ -1058,6 +1114,12 @@ export function deriveProjectStatus(
     ),
   );
   if (views.length === 0) return "pending";
+  const failed = views.filter((v) => v.status === "failed");
+  if (failed.length === views.length) return "failed";
+  // Partial failure is "sticky" — if any asset failed we surface it even when
+  // others are still running, so the user isn't lied to with "생성 중" while
+  // half the project is actually broken and waiting on a retry click.
+  if (failed.length > 0) return "partial_failed";
   const allReady = views.every((v) => v.status === "ready");
   if (allReady) return "review";
   return "in_progress";

@@ -35,6 +35,7 @@ export type ReviewBoardProps = {
 
 export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) {
   const submitRevision = useJobsStore((s) => s.submitRevision);
+  const retryGeneration = useJobsStore((s) => s.retryGeneration);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [lightbox, setLightbox] = useState<Lightbox | null>(null);
   const params = useSearchParams();
@@ -98,6 +99,11 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
             <PackageCard
               view={packageView}
               onRequestRevision={() => openReady("package")}
+              onRetry={
+                projectId
+                  ? () => void retryGeneration(projectId, "package")
+                  : undefined
+              }
               onOpenVariant={openLightbox}
             />
           </div>
@@ -107,6 +113,11 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
             view={styleView}
             description={styleShotDescription}
             onRequestRevision={() => openReady("style_shot")}
+            onRetry={
+              projectId
+                ? () => void retryGeneration(projectId, "style_shot")
+                : undefined
+            }
             onOpenVariant={openLightbox}
           />
         )}
@@ -115,6 +126,11 @@ export function ReviewBoard({ assetTypes, views, projectId }: ReviewBoardProps) 
             view={videoView}
             description={shortVideoDescription}
             onRequestRevision={() => openReady("short_video")}
+            onRetry={
+              projectId
+                ? () => void retryGeneration(projectId, "short_video")
+                : undefined
+            }
             onOpenVariant={openLightbox}
           />
         )}

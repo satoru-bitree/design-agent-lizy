@@ -190,6 +190,14 @@ function StatusBadge({ status }: { status: ProjectStatus }) {
       </span>
     );
   }
+  if (status === "failed" || status === "partial_failed") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill border border-state-danger/40 bg-state-danger/10 px-2.5 py-1 font-mono text-[11px] text-state-danger">
+        <StatusDot tone="warning" />
+        {status === "failed" ? "실패" : "일부 실패"}
+      </span>
+    );
+  }
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill border border-border bg-surface-2 px-2.5 py-1 font-mono text-[11px] text-fg-muted">
       <StatusDot tone="idle" />

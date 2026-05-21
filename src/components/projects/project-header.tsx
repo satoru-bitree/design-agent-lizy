@@ -12,6 +12,8 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
   in_progress: "생성 중",
   review: "검토 대기 중",
   approved: "승인 완료",
+  partial_failed: "일부 실패",
+  failed: "생성 실패",
 };
 
 export function ProjectHeader({
@@ -34,11 +36,19 @@ export function ProjectHeader({
   const headingPrefix =
     status === "review" || status === "approved"
       ? "에셋 생성 완료"
-      : status === "in_progress"
-        ? "에셋 생성 중"
-        : "에셋 준비 중";
+      : status === "failed"
+        ? "에셋 생성 실패"
+        : status === "partial_failed"
+          ? "일부 에셋 실패"
+          : status === "in_progress"
+            ? "에셋 생성 중"
+            : "에셋 준비 중";
 
-  const monitoringActive = status !== "in_progress";
+  const hasFailure = status === "failed" || status === "partial_failed";
+  // "monitoringActive" reflects the agent's idle-vs-watching dot. While the
+  // agent is mid-generation OR mid-failure (waiting on a retry), it isn't
+  // actively monitoring — it's blocked or busy.
+  const monitoringActive = status !== "in_progress" && !hasFailure;
 
   return (
     <header className="flex flex-col gap-3">
@@ -87,7 +97,14 @@ export function ProjectHeader({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <span className="inline-flex items-center rounded-pill border border-mint px-2.5 py-1 font-kr text-[11px] font-medium text-mint">
+        <span
+          className={cn(
+            "inline-flex items-center rounded-pill px-2.5 py-1 font-kr text-[11px] font-medium",
+            hasFailure
+              ? "border border-state-danger/40 bg-state-danger/10 text-state-danger"
+              : "border border-mint text-mint",
+          )}
+        >
           {STATUS_LABEL[status]}
         </span>
         {productImageUrl && (
@@ -113,10 +130,18 @@ export function ProjectHeader({
           </button>
         )}
         <span className="inline-flex items-center gap-2 font-kr text-[13px] text-fg-dim">
-          <StatusDot tone={monitoringActive ? "active" : "pending"} />
-          {monitoringActive
-            ? "에이전트 모니터링 활성화됨"
-            : "에이전트가 에셋을 생성 중입니다"}
+          <StatusDot
+            tone={
+              hasFailure ? "warning" : monitoringActive ? "active" : "pending"
+            }
+          />
+          {hasFailure
+            ? status === "failed"
+              ? "모든 에셋 생성에 실패했습니다"
+              : "일부 에셋이 실패했습니다. 카드에서 다시 시도하세요"
+            : monitoringActive
+              ? "에이전트 모니터링 활성화됨"
+              : "에이전트가 에셋을 생성 중입니다"}
         </span>
       </div>
 

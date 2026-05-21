@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Download, Film, Play } from "lucide-react";
 import { AssetResultCard } from "@/components/projects/asset-result-card";
+import { AssetFailedBody } from "@/components/projects/asset-failed-body";
 import { deriveDownloadFilename, downloadFile } from "@/lib/download";
 import type { AssetView } from "@/lib/stores/jobs-store";
 
@@ -15,6 +16,7 @@ export function ShortVideoCard({
   view,
   description,
   onRequestRevision,
+  onRetry,
   onOpenVariant,
 }: {
   view: AssetView;
@@ -25,6 +27,7 @@ export function ShortVideoCard({
    */
   description?: string | null;
   onRequestRevision?: () => void;
+  onRetry?: () => void;
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
   const variant = view.status === "ready" ? view.variants[0] : null;
@@ -47,6 +50,7 @@ export function ShortVideoCard({
         view={view}
         description={description ?? null}
         onOpenVariant={onOpenVariant}
+        onRetry={onRetry}
       />
     </AssetResultCard>
   );
@@ -77,10 +81,12 @@ function Body({
   view,
   description,
   onOpenVariant,
+  onRetry,
 }: {
   view: AssetView;
   description: string | null;
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
+  onRetry?: () => void;
 }) {
   if (view.status === "ready") {
     const variant = view.variants[0];
@@ -164,8 +170,8 @@ function Body({
     return (
       <div className="flex flex-col items-center gap-4">
         <div className="relative aspect-[9/16] w-[200px] rounded-[24px] bg-[#0A0A0A] p-2 shadow-soft">
-          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[18px] border border-state-danger/30 bg-state-danger/5 px-3 text-center font-kr text-[12px] text-state-danger">
-            {view.error}
+          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[18px] border border-state-danger/30 bg-state-danger/5">
+            <AssetFailedBody error={view.error} onRetry={onRetry} compact />
           </div>
         </div>
       </div>

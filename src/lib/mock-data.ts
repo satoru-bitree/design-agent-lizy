@@ -46,7 +46,16 @@ export type BrandGuide = {
   moodCaption?: string;
 };
 
-export type ProjectStatus = "pending" | "in_progress" | "review" | "approved";
+export type ProjectStatus =
+  | "pending"
+  | "in_progress"
+  | "review"
+  | "approved"
+  // At least one asset's POST /api/jobs hit startError OR its job came back
+  // failed. We split partial vs all-failed because the user actions differ:
+  // partial = retry just the broken card; failed = the whole project bombed.
+  | "partial_failed"
+  | "failed";
 
 export type Project = {
   id: string;

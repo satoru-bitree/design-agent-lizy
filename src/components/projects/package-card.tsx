@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Download, Info, Package } from "lucide-react";
 import { AssetResultCard } from "@/components/projects/asset-result-card";
+import { AssetFailedBody } from "@/components/projects/asset-failed-body";
 import type { AssetView } from "@/lib/stores/jobs-store";
 import { deriveDownloadFilename, downloadFile } from "@/lib/download";
 
@@ -10,10 +11,12 @@ const AI_CONVERSION_HINT =
 export function PackageCard({
   view,
   onRequestRevision,
+  onRetry,
   onOpenVariant,
 }: {
   view: AssetView;
   onRequestRevision?: () => void;
+  onRetry?: () => void;
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
   // Only surface the download affordance once an actual variant exists. Pulled
@@ -36,7 +39,7 @@ export function PackageCard({
       onRequestRevision={onRequestRevision}
       extraFooterAction={downloadAction}
     >
-      <Body view={view} onOpenVariant={onOpenVariant} />
+      <Body view={view} onOpenVariant={onOpenVariant} onRetry={onRetry} />
     </AssetResultCard>
   );
 }
@@ -87,9 +90,11 @@ function InfoTooltip({ label, message }: { label: string; message: string }) {
 function Body({
   view,
   onOpenVariant,
+  onRetry,
 }: {
   view: AssetView;
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
+  onRetry?: () => void;
 }) {
   if (view.status === "ready") {
     // gpt-image-2/edit returns a single landscape die-line label artwork.
@@ -126,8 +131,8 @@ function Body({
   }
   if (view.status === "failed") {
     return (
-      <div className="flex aspect-[4/3] items-center justify-center rounded-md border border-state-danger/30 bg-state-danger/5 px-5 text-center font-kr text-[13px] text-state-danger">
-        {view.error}
+      <div className="flex aspect-[4/3] items-center justify-center rounded-md border border-state-danger/30 bg-state-danger/5">
+        <AssetFailedBody error={view.error} onRetry={onRetry} />
       </div>
     );
   }

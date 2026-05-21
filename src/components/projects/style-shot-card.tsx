@@ -1,12 +1,14 @@
 import Image from "next/image";
 import { Camera } from "lucide-react";
 import { AssetResultCard } from "@/components/projects/asset-result-card";
+import { AssetFailedBody } from "@/components/projects/asset-failed-body";
 import type { AssetView } from "@/lib/stores/jobs-store";
 
 export function StyleShotCard({
   view,
   description,
   onRequestRevision,
+  onRetry,
   onOpenVariant,
 }: {
   view: AssetView;
@@ -17,6 +19,7 @@ export function StyleShotCard({
    */
   description?: string | null;
   onRequestRevision?: () => void;
+  onRetry?: () => void;
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
 }) {
   return (
@@ -31,7 +34,7 @@ export function StyleShotCard({
           {description}
         </p>
       )}
-      <Body view={view} onOpenVariant={onOpenVariant} />
+      <Body view={view} onOpenVariant={onOpenVariant} onRetry={onRetry} />
     </AssetResultCard>
   );
 }
@@ -45,9 +48,11 @@ const GRID_STYLE = {
 function Body({
   view,
   onOpenVariant,
+  onRetry,
 }: {
   view: AssetView;
   onOpenVariant?: (src: string, alt: string, caption?: string) => void;
+  onRetry?: () => void;
 }) {
   if (view.status === "ready") {
     return (
@@ -93,8 +98,8 @@ function Body({
   }
   if (view.status === "failed") {
     return (
-      <div className="flex aspect-[3/2] items-center justify-center rounded-md border border-state-danger/30 bg-state-danger/5 px-5 text-center font-kr text-[13px] text-state-danger">
-        {view.error}
+      <div className="flex aspect-[3/2] items-center justify-center rounded-md border border-state-danger/30 bg-state-danger/5">
+        <AssetFailedBody error={view.error} onRetry={onRetry} />
       </div>
     );
   }
