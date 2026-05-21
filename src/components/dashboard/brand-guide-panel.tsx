@@ -149,6 +149,14 @@ function LogoSection() {
           onFile={(f) => upload("logo", f)}
         />
       )}
+      {logo.error && (
+        <div
+          role="alert"
+          className="font-kr text-[11px] leading-[1.5] text-state-danger"
+        >
+          {logo.error}
+        </div>
+      )}
     </SectionShell>
   );
 }

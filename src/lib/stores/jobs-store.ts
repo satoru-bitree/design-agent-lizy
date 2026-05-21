@@ -298,8 +298,32 @@ export const useJobsStore = create<Store>()(
         // BrandGuide on /api/jobs requests — fal/nemotron can't reach our
         // browser blob: URLs. compressImageFile downscales any source to
         // ~1536px JPEG so the persisted state stays bearable.
-        const dataUrl = await compressImageFile(file);
-        const objectUrl = URL.createObjectURL(file);
+        let dataUrl: string;
+        let objectUrl: string;
+        try {
+          dataUrl = await compressImageFile(file);
+          objectUrl = URL.createObjectURL(file);
+        } catch (e) {
+          // compressImageFile rejects unsupported formats and corrupted
+          // images. Surface in-panel so the user gets a real explanation
+          // instead of a silently-empty slot.
+          const message =
+            e instanceof Error
+              ? `이미지를 읽을 수 없습니다: ${e.message}`
+              : "이미지를 읽을 수 없습니다.";
+          console.error("[brand] uploadBrandSectionImage failed:", e);
+          set((state) => ({
+            brand: {
+              ...state.brand,
+              [section]: {
+                ...state.brand[section],
+                error: message,
+                ...(section === "logo" ? { applying: false } : {}),
+              },
+            },
+          }));
+          return;
+        }
 
         set((state) => {
           const prev = state.brand[section];
