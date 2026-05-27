@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   BrandSectionInterpretResult,
   GenerationInput,
@@ -16,6 +15,7 @@ import type {
   BrandGuide,
   ProjectStatus,
 } from "@/lib/mock-data";
+import type { BrandPersisted } from "@/lib/db/schema";
 
 /* -------------------------------------------------------------------------- */
 /* Brand state                                                                */
@@ -27,9 +27,9 @@ export type BrandTextSectionKind = Exclude<BrandSectionKind, "logo">;
 export type BrandSectionImage = {
   fileName: string;
   fileSize: number;
-  /** Browser-only blob URL — for preview. Stripped on persist. */
+  /** Browser-only blob URL — for preview. Not persisted. */
   objectUrl: string;
-  /** Base64 dataURL — applied into the BrandGuide so generation can ship it. Stripped on persist. */
+  /** Base64 dataURL — fed into the BrandGuide so generation can ship it. Not persisted. */
   dataUrl: string;
 };
 
@@ -61,8 +61,6 @@ export type BrandLogoSection = {
  *   - the last text the user pressed "적용" on (for dirty detection)
  *   - the structured `result` returned by interpretBrandSection (drives the guide)
  *   - applying / error flags for UI feedback
- *
- * The `R` type parameter is the section's structured result shape.
  */
 export type BrandTextSection<R> = {
   image: BrandSectionImage | null;
@@ -84,7 +82,10 @@ export type BrandMoodSection = BrandTextSection<string>;
 
 /**
  * Brand state — four independent sections built up incrementally.
- * `status` is "ready" iff a logo image is present.
+ * `status` is "ready" iff a logo image is present OR a persisted logo result
+ * has been loaded from the DB (so a refresh that drops the image blob still
+ * keeps the brand "ready" for generation purposes — the wordmark fields land
+ * in the guide regardless).
  */
 export type BrandState = {
   status: "idle" | "ready";
@@ -151,9 +152,6 @@ function deriveGuide(
     typography: next.typography.result ?? EMPTY_GUIDE.typography,
     moodboard,
     ...(next.mood.result ? { moodCaption: next.mood.result } : {}),
-    // Brand identity from logo interpret. Without these, fal's label prompt
-    // falls back to the literal "BRAND" placeholder and renders nothing for
-    // the secondary brand mark.
     ...(logoResult ? { brandName: logoResult.brandName } : {}),
     ...(logoResult ? { logoWordmark: logoResult.logoWordmark } : {}),
   };
@@ -166,24 +164,23 @@ function deriveGuide(
 export type ProductAsset = {
   fileName: string;
   fileSize: number;
-  /** Browser-only ObjectURL. Cleared on persist (URL is invalid after refresh). */
+  /** Browser-only ObjectURL. Cleared on refresh. */
   objectUrl: string;
   /**
    * Base64 dataURL of the uploaded file. Server-side providers (fal.ai) need
-   * this to upload to their CDN. Stripped on persist (size + transient).
+   * this to upload to their CDN. Not persisted.
    */
   dataUrl?: string;
   /**
    * Persistent CDN URL returned by the provider after first upload. Survives
-   * persist/refresh — revisions reuse this so we never need to ship the
-   * dataURL again. Set after the first successful /api/jobs call.
+   * refresh — revisions reuse this so we never need to ship the dataURL again.
    */
   remoteUrl?: string;
 };
 
 export type ReferenceAsset = {
   fileName: string;
-  /** base64 dataURL — sent to /api/jobs each request. Stripped on persist. */
+  /** base64 dataURL — sent to /api/jobs each request. Not persisted. */
   dataUrl: string;
   /** Persistent CDN URL after first upload, see ProductAsset.remoteUrl. */
   remoteUrl?: string;
@@ -199,10 +196,6 @@ export type GenerationProject = {
   /** Optional style-reference image, keyed per asset type. */
   references?: Partial<Record<AssetType, ReferenceAsset>>;
   assetTypes: AssetType[];
-  /**
-   * Per-asset-type generation settings. Stored on the project so revisions
-   * keep the original creative direction unless the user changes it.
-   */
   styleShotSettings?: StyleShotSettings;
   shortVideoSettings?: ShortVideoSettings;
   /** jobId per asset type. May be missing if the start request itself failed. */
@@ -244,21 +237,22 @@ export type AssetView =
 
 type Store = {
   brand: BrandState;
-  /** Upload an image into a specific section. Logo upload flips status to "ready". */
+  /** True once initial DB loads (brand + projects) have completed at least once. */
+  hydrated: boolean;
+
+  // Load actions — pulled by <StoreRehydrate /> on mount. Re-fetchable so a
+  // navigation back into the dashboard refreshes from DB.
+  loadBrand: () => Promise<void>;
+  loadProjects: () => Promise<void>;
+  loadProject: (projectId: string) => Promise<void>;
+
   uploadBrandSectionImage: (
     section: BrandSectionKind,
     file: File,
   ) => Promise<void>;
-  /** Update the working text on a section (not yet applied). */
   setBrandSectionText: (section: BrandTextSectionKind, text: string) => void;
-  /**
-   * Run the section's working text through the AI interpreter (natural
-   * language → structured BrandGuide field). Resolves once the call lands.
-   */
   applyBrandSection: (section: BrandTextSectionKind) => Promise<void>;
-  /** Drop the image from a section. Clearing logo drops status back to "idle". */
   clearBrandSectionImage: (section: BrandSectionKind) => void;
-  /** Reset all four sections. */
   resetBrand: () => void;
 
   generationProjects: Record<string, GenerationProject>;
@@ -266,13 +260,6 @@ type Store = {
 
   submitGeneration: (input: SubmitInput) => Promise<string>;
   submitRevision: (input: SubmitRevisionInput) => Promise<void>;
-  /**
-   * Re-run the original /api/jobs POST for a single asset whose generation
-   * failed (either at startup or mid-run). Reuses the project's stored input
-   * so the user doesn't have to re-enter anything; clears the failure marker
-   * optimistically so the card flips back to a queued/loading state right
-   * away.
-   */
   retryGeneration: (projectId: string, kind: AssetType) => Promise<void>;
   pollJob: (jobId: string) => Promise<void>;
   removeProject: (projectId: string) => void;
@@ -293,536 +280,523 @@ function makeProjectId(): string {
   return `proj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export const useJobsStore = create<Store>()(
-  persist(
-    (set, get) => ({
-      brand: INITIAL_BRAND,
+export const useJobsStore = create<Store>()((set, get) => ({
+  brand: INITIAL_BRAND,
+  hydrated: false,
 
-      uploadBrandSectionImage: async (
-        section: BrandSectionKind,
-        file: File,
-      ) => {
-        // We need a base64 dataUrl so the image can ride along in the
-        // BrandGuide on /api/jobs requests — fal/nemotron can't reach our
-        // browser blob: URLs. compressImageFile downscales any source to
-        // ~1536px JPEG so the persisted state stays bearable.
-        let dataUrl: string;
-        let objectUrl: string;
-        try {
-          dataUrl = await compressImageFile(file);
-          objectUrl = URL.createObjectURL(file);
-        } catch (e) {
-          // compressImageFile rejects unsupported formats and corrupted
-          // images. Surface in-panel so the user gets a real explanation
-          // instead of a silently-empty slot.
-          const message =
-            e instanceof Error
-              ? `이미지를 읽을 수 없습니다: ${e.message}`
-              : "이미지를 읽을 수 없습니다.";
-          console.error("[brand] uploadBrandSectionImage failed:", e);
-          set((state) => ({
-            brand: {
+  loadBrand: async () => {
+    try {
+      const res = await fetch("/api/brand");
+      if (!res.ok) {
+        console.error("[jobs-store] loadBrand non-ok:", res.status);
+        return;
+      }
+      const { brand } = (await res.json()) as { brand: BrandPersisted | null };
+      set((state) => ({
+        brand: hydrateBrand(brand, state.brand),
+      }));
+    } catch (e) {
+      console.error("[jobs-store] loadBrand failed:", e);
+    }
+  },
+
+  loadProjects: async () => {
+    try {
+      const res = await fetch("/api/projects");
+      if (!res.ok) {
+        console.error("[jobs-store] loadProjects non-ok:", res.status);
+        return;
+      }
+      const { projects, jobs } = (await res.json()) as {
+        projects: GenerationProject[];
+        jobs: Record<string, Job>;
+      };
+      const generationProjects: Record<string, GenerationProject> = {};
+      for (const p of projects) generationProjects[p.id] = p;
+      set((state) => ({
+        generationProjects,
+        jobs: { ...state.jobs, ...jobs },
+        hydrated: true,
+      }));
+    } catch (e) {
+      console.error("[jobs-store] loadProjects failed:", e);
+    }
+  },
+
+  loadProject: async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+      if (res.status === 404) return;
+      if (!res.ok) {
+        console.error("[jobs-store] loadProject non-ok:", res.status);
+        return;
+      }
+      const { project, jobs } = (await res.json()) as {
+        project: GenerationProject;
+        jobs: Record<string, Job>;
+      };
+      set((state) => ({
+        generationProjects: {
+          ...state.generationProjects,
+          [project.id]: project,
+        },
+        jobs: { ...state.jobs, ...jobs },
+      }));
+    } catch (e) {
+      console.error("[jobs-store] loadProject failed:", e);
+    }
+  },
+
+  uploadBrandSectionImage: async (
+    section: BrandSectionKind,
+    file: File,
+  ) => {
+    // Need a base64 dataUrl so the image can ride along in the BrandGuide on
+    // /api/jobs requests — fal/nemotron can't reach our browser blob: URLs.
+    let dataUrl: string;
+    let objectUrl: string;
+    try {
+      dataUrl = await compressImageFile(file);
+      objectUrl = URL.createObjectURL(file);
+    } catch (e) {
+      const message =
+        e instanceof Error
+          ? `이미지를 읽을 수 없습니다: ${e.message}`
+          : "이미지를 읽을 수 없습니다.";
+      console.error("[brand] uploadBrandSectionImage failed:", e);
+      set((state) => ({
+        brand: {
+          ...state.brand,
+          [section]: {
+            ...state.brand[section],
+            error: message,
+            ...(section === "logo" ? { applying: false } : {}),
+          },
+        },
+      }));
+      return;
+    }
+
+    set((state) => {
+      const prev = state.brand[section];
+      if (prev.image?.objectUrl) URL.revokeObjectURL(prev.image.objectUrl);
+
+      const image: BrandSectionImage = {
+        fileName: file.name,
+        fileSize: file.size,
+        objectUrl,
+        dataUrl,
+      };
+
+      const nextSections =
+        section === "logo"
+          ? {
               ...state.brand,
-              [section]: {
-                ...state.brand[section],
-                error: message,
-                ...(section === "logo" ? { applying: false } : {}),
-              },
+              logo: {
+                image,
+                result: null,
+                applying: true,
+                error: null,
+              } satisfies BrandLogoSection,
+            }
+          : { ...state.brand, [section]: { ...prev, image } };
+
+      return {
+        brand: {
+          ...nextSections,
+          status: nextSections.logo.image || nextSections.logo.result
+            ? "ready"
+            : "idle",
+          guide: deriveGuide(nextSections),
+        },
+      };
+    });
+
+    // Logo section: fire the vision-LLM interpret in the background so
+    // brandName + logoWordmark land in the guide before generation.
+    if (section === "logo") {
+      void interpretLogoImage(set, get, {
+        imageDataUrl: dataUrl,
+        fileName: file.name,
+        mimeType: file.type || undefined,
+      });
+    } else {
+      // Non-logo image upload doesn't change persistable shape (image isn't
+      // persisted) — no PUT needed.
+    }
+  },
+
+  setBrandSectionText: (section, text) => {
+    set((state) => ({
+      brand: {
+        ...state.brand,
+        [section]: { ...state.brand[section], text, error: null },
+      },
+    }));
+    schedulePersistBrand(get);
+  },
+
+  applyBrandSection: async (section) => {
+    const draft = get().brand[section].text.trim();
+    if (!draft) return;
+
+    set((state) => ({
+      brand: {
+        ...state.brand,
+        [section]: {
+          ...state.brand[section],
+          applying: true,
+          error: null,
+        },
+      },
+    }));
+
+    try {
+      const res = await fetch("/api/brand/interpret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section, text: draft }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as {
+          message?: string;
+        } | null;
+        throw new Error(err?.message ?? "해석에 실패했습니다.");
+      }
+      const data = (await res.json()) as BrandSectionInterpretResult;
+      applyInterpretResult(set, section, draft, data);
+      void persistBrandNow(get);
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "해석에 실패했습니다.";
+      set((state) => ({
+        brand: {
+          ...state.brand,
+          [section]: {
+            ...state.brand[section],
+            applying: false,
+            error: message,
+          },
+        },
+      }));
+    }
+  },
+
+  clearBrandSectionImage: (section) => {
+    set((state) => {
+      const cur = state.brand[section];
+      if (cur.image?.objectUrl) URL.revokeObjectURL(cur.image.objectUrl);
+
+      const nextSections =
+        section === "logo"
+          ? { ...state.brand, logo: INITIAL_LOGO }
+          : { ...state.brand, [section]: { ...cur, image: null } };
+      return {
+        brand: {
+          ...nextSections,
+          status: nextSections.logo.image || nextSections.logo.result
+            ? "ready"
+            : "idle",
+          guide: deriveGuide(nextSections),
+        },
+      };
+    });
+    // Logo clear drops result → persist. Other section clears don't touch
+    // persistable shape, but persistBrandNow is cheap (one PUT) so just fire.
+    void persistBrandNow(get);
+  },
+
+  resetBrand: () => {
+    const cur = get().brand;
+    for (const k of ["logo", "palette", "typography", "mood"] as const) {
+      const img = cur[k].image;
+      if (img?.objectUrl) URL.revokeObjectURL(img.objectUrl);
+    }
+    set({ brand: INITIAL_BRAND });
+    void persistBrandNow(get);
+  },
+
+  generationProjects: {},
+  jobs: {},
+
+  submitGeneration: async (input) => {
+    const projectId = makeProjectId();
+
+    const projectShell: GenerationProject = {
+      id: projectId,
+      name: deriveProjectName(input),
+      market: input.market,
+      brandMessage: input.brandMessage,
+      brandGuide: input.brandGuide,
+      product: input.product,
+      references: input.references,
+      assetTypes: input.assetTypes,
+      styleShotSettings: input.styleShotSettings,
+      shortVideoSettings: input.shortVideoSettings,
+      jobIds: {},
+      startErrors: {},
+      createdAt: Date.now(),
+    };
+
+    // 1) Insert client-side immediately for snappy nav.
+    set((state) => ({
+      generationProjects: {
+        ...state.generationProjects,
+        [projectId]: projectShell,
+      },
+    }));
+
+    // 2) Persist the shell to DB. Await this so /projects/[id]'s loadProject
+    //    can't race ahead of the row landing.
+    await postProject(projectShell);
+
+    // 3) Fire /api/jobs calls in the background. Each resolution patches the
+    //    project — jobIds[kind] on success, startErrors[kind] on failure.
+    //    AssetView for an empty jobIds[kind] derives to "queued".
+    void Promise.allSettled(
+      input.assetTypes.map((kind) => kickOffKind(projectId, kind, input, set, get)),
+    );
+
+    return projectId;
+  },
+
+  submitRevision: async ({
+    projectId,
+    kind,
+    quickFix,
+    note,
+    baseVariantUrl,
+  }) => {
+    const project = get().generationProjects[projectId];
+    if (!project) return;
+
+    const previousJobId = project.jobIds[kind];
+
+    // OPTIMISTIC UPDATE: drop the previous job + clear stale errors NOW.
+    set((state) => {
+      const cur = state.generationProjects[projectId];
+      if (!cur) return state;
+      const nextJobIds = { ...cur.jobIds };
+      delete nextJobIds[kind];
+      const nextStartErrors = { ...cur.startErrors };
+      delete nextStartErrors[kind];
+      const nextJobs = { ...state.jobs };
+      if (previousJobId) delete nextJobs[previousJobId];
+      return {
+        jobs: nextJobs,
+        generationProjects: {
+          ...state.generationProjects,
+          [projectId]: {
+            ...cur,
+            jobIds: nextJobIds,
+            startErrors: nextStartErrors,
+          },
+        },
+      };
+    });
+    void persistProject(projectId, {
+      jobIds: stripUndefined(get().generationProjects[projectId]?.jobIds ?? {}),
+      startErrors: stripUndefined(
+        get().generationProjects[projectId]?.startErrors ?? {},
+      ),
+    });
+
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind,
+          input: {
+            productImageUrl: project.product.objectUrl,
+            productImageDataUrl: project.product.dataUrl,
+            productImageRemoteUrl: project.product.remoteUrl,
+            referenceImageDataUrl: project.references?.[kind]?.dataUrl,
+            referenceImageRemoteUrl:
+              project.references?.[kind]?.remoteUrl,
+            brandGuide: project.brandGuide,
+            market: project.market,
+            brandMessage: project.brandMessage,
+            styleShot:
+              kind === "style_shot" ? project.styleShotSettings : undefined,
+            shortVideo:
+              kind === "short_video"
+                ? project.shortVideoSettings
+                : undefined,
+            revision: {
+              quickFix,
+              note,
+              previousJobId,
+              baseVariantUrl,
             },
-          }));
-          return;
-        }
-
+          } satisfies GenerationInput,
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as {
+          message?: string;
+        } | null;
+        const message = err?.message ?? "수정 요청 실패";
         set((state) => {
-          const prev = state.brand[section];
-          if (prev.image?.objectUrl) URL.revokeObjectURL(prev.image.objectUrl);
-
-          const image: BrandSectionImage = {
-            fileName: file.name,
-            fileSize: file.size,
-            objectUrl,
-            dataUrl,
-          };
-
-          const nextSections =
-            section === "logo"
-              ? {
-                  ...state.brand,
-                  // New logo image → drop any stale brandName/wordmark; the
-                  // interpret call kicked off below will repopulate.
-                  logo: {
-                    image,
-                    result: null,
-                    applying: true,
-                    error: null,
-                  } satisfies BrandLogoSection,
-                }
-              : { ...state.brand, [section]: { ...prev, image } };
-
+          const cur = state.generationProjects[projectId];
+          if (!cur) return state;
           return {
-            brand: {
-              ...nextSections,
-              status: nextSections.logo.image ? "ready" : "idle",
-              guide: deriveGuide(nextSections),
+            generationProjects: {
+              ...state.generationProjects,
+              [projectId]: {
+                ...cur,
+                startErrors: { ...cur.startErrors, [kind]: message },
+              },
             },
           };
         });
-
-        // Logo section: fire the vision-LLM interpret in the background so
-        // brandName + logoWordmark land in the guide before generation.
-        if (section === "logo") {
-          void interpretLogoImage(set, {
-            imageDataUrl: dataUrl,
-            fileName: file.name,
-            mimeType: file.type || undefined,
-          });
-        }
-      },
-
-      setBrandSectionText: (section, text) => {
-        set((state) => ({
-          brand: {
-            ...state.brand,
-            [section]: { ...state.brand[section], text, error: null },
-          },
-        }));
-      },
-
-      applyBrandSection: async (section) => {
-        const draft = get().brand[section].text.trim();
-        if (!draft) return;
-
-        // Flip applying=true synchronously so the button shows a spinner
-        // immediately. error is cleared here too.
-        set((state) => ({
-          brand: {
-            ...state.brand,
-            [section]: {
-              ...state.brand[section],
-              applying: true,
-              error: null,
-            },
-          },
-        }));
-
-        try {
-          const res = await fetch("/api/brand/interpret", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ section, text: draft }),
-          });
-          if (!res.ok) {
-            const err = (await res.json().catch(() => null)) as {
-              message?: string;
-            } | null;
-            throw new Error(err?.message ?? "해석에 실패했습니다.");
-          }
-          const data = (await res.json()) as BrandSectionInterpretResult;
-          applyInterpretResult(set, section, draft, data);
-        } catch (e) {
-          const message =
-            e instanceof Error ? e.message : "해석에 실패했습니다.";
-          set((state) => ({
-            brand: {
-              ...state.brand,
-              [section]: {
-                ...state.brand[section],
-                applying: false,
-                error: message,
-              },
-            },
-          }));
-        }
-      },
-
-      clearBrandSectionImage: (section) => {
-        set((state) => {
-          const cur = state.brand[section];
-          if (cur.image?.objectUrl) URL.revokeObjectURL(cur.image.objectUrl);
-
-          const nextSections =
-            section === "logo"
-              ? { ...state.brand, logo: INITIAL_LOGO }
-              : { ...state.brand, [section]: { ...cur, image: null } };
-          return {
-            brand: {
-              ...nextSections,
-              status: nextSections.logo.image ? "ready" : "idle",
-              guide: deriveGuide(nextSections),
-            },
-          };
+        void persistProject(projectId, {
+          startErrors: stripUndefined(
+            get().generationProjects[projectId]?.startErrors ?? {},
+          ),
         });
-      },
+        return;
+      }
+      const { jobId: newJobId, uploads } = (await res.json()) as {
+        jobId: string;
+        uploads?: { product?: string; reference?: string };
+      };
 
-      resetBrand: () => {
-        const cur = get().brand;
-        for (const k of ["logo", "palette", "typography", "mood"] as const) {
-          const img = cur[k].image;
-          if (img?.objectUrl) URL.revokeObjectURL(img.objectUrl);
+      set((state) => {
+        const cur = state.generationProjects[projectId];
+        if (!cur) return state;
+
+        const nextProduct =
+          uploads?.product && !cur.product.remoteUrl
+            ? { ...cur.product, remoteUrl: uploads.product }
+            : cur.product;
+        const nextRefs = { ...(cur.references ?? {}) };
+        const refForKind = nextRefs[kind];
+        if (uploads?.reference && refForKind && !refForKind.remoteUrl) {
+          nextRefs[kind] = { ...refForKind, remoteUrl: uploads.reference };
         }
-        set({ brand: INITIAL_BRAND });
-      },
 
-      generationProjects: {},
-      jobs: {},
-
-      submitGeneration: async (input) => {
-        const projectId = makeProjectId();
-
-        // 1) Insert project shell immediately and return projectId so the
-        //    caller can navigate without waiting on /api/jobs (each fetch can
-        //    take 5–10s for fal upload + nemotron classify + queue submit;
-        //    3 kinds in parallel still meant ~10s of dead air).
-        const projectShell: GenerationProject = {
-          id: projectId,
-          name: deriveProjectName(input),
-          market: input.market,
-          brandMessage: input.brandMessage,
-          brandGuide: input.brandGuide,
-          product: input.product,
-          references: input.references,
-          assetTypes: input.assetTypes,
-          styleShotSettings: input.styleShotSettings,
-          shortVideoSettings: input.shortVideoSettings,
-          jobIds: {},
-          startErrors: {},
-          createdAt: Date.now(),
-        };
-        set((state) => ({
+        return {
           generationProjects: {
             ...state.generationProjects,
-            [projectId]: projectShell,
+            [projectId]: {
+              ...cur,
+              product: nextProduct,
+              references:
+                Object.keys(nextRefs).length > 0 ? nextRefs : cur.references,
+              jobIds: { ...cur.jobIds, [kind]: newJobId },
+            },
           },
-        }));
-
-        // 2) Kick off /api/jobs calls in the background. Each resolution
-        //    patches the project — jobIds[kind] on success, startErrors[kind]
-        //    on failure, plus rolling CDN URLs into the cache as they arrive.
-        //    AssetView for an empty jobIds[kind] derives to "queued", so the
-        //    project page shows the right skeleton state on arrival.
-        void Promise.allSettled(
-          input.assetTypes.map((kind) => kickOffKind(projectId, kind, input, set)),
-        );
-
-        return projectId;
-      },
-
-      submitRevision: async ({
-        projectId,
-        kind,
-        quickFix,
-        note,
-        baseVariantUrl,
-      }) => {
-        const project = get().generationProjects[projectId];
-        if (!project) return;
-
-        const previousJobId = project.jobIds[kind];
-
-        // OPTIMISTIC UPDATE: drop the previous job + clear stale errors NOW,
-        // before the (slow) /api/jobs call returns. Without this the card
-        // keeps showing the old "ready" image — including 승인 / 수정 요청
-        // buttons — for ~5–10s while fal uploads + classifies + queues, and
-        // the user thinks their submit was lost. Reference change to
-        // generationProjects[projectId] also re-fires the polling effect so
-        // it picks up the new id list once it lands.
-        set((state) => {
-          const cur = state.generationProjects[projectId];
-          if (!cur) return state;
-          const nextJobIds = { ...cur.jobIds };
-          delete nextJobIds[kind];
-          const nextStartErrors = { ...cur.startErrors };
-          delete nextStartErrors[kind];
-          const nextJobs = { ...state.jobs };
-          if (previousJobId) delete nextJobs[previousJobId];
-          return {
-            jobs: nextJobs,
-            generationProjects: {
-              ...state.generationProjects,
-              [projectId]: {
-                ...cur,
-                jobIds: nextJobIds,
-                startErrors: nextStartErrors,
-              },
-            },
-          };
-        });
-
-        try {
-          const res = await fetch("/api/jobs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              kind,
-              input: {
-                productImageUrl: project.product.objectUrl,
-                productImageDataUrl: project.product.dataUrl,
-                productImageRemoteUrl: project.product.remoteUrl,
-                referenceImageDataUrl: project.references?.[kind]?.dataUrl,
-                referenceImageRemoteUrl:
-                  project.references?.[kind]?.remoteUrl,
-                brandGuide: project.brandGuide,
-                market: project.market,
-                brandMessage: project.brandMessage,
-                styleShot:
-                  kind === "style_shot" ? project.styleShotSettings : undefined,
-                shortVideo:
-                  kind === "short_video"
-                    ? project.shortVideoSettings
-                    : undefined,
-                revision: {
-                  quickFix,
-                  note,
-                  previousJobId,
-                  baseVariantUrl,
-                },
-              } satisfies GenerationInput,
-            }),
-          });
-          if (!res.ok) {
-            const err = (await res.json().catch(() => null)) as {
-              message?: string;
-            } | null;
-            // Mark startError on this kind so the card surfaces failure.
-            set((state) => {
-              const cur = state.generationProjects[projectId];
-              if (!cur) return state;
-              return {
-                generationProjects: {
-                  ...state.generationProjects,
-                  [projectId]: {
-                    ...cur,
-                    startErrors: {
-                      ...cur.startErrors,
-                      [kind]: err?.message ?? "수정 요청 실패",
-                    },
-                  },
-                },
-              };
-            });
-            return;
-          }
-          const { jobId: newJobId, uploads } = (await res.json()) as {
-            jobId: string;
-            uploads?: { product?: string; reference?: string };
-          };
-
-          set((state) => {
-            const cur = state.generationProjects[projectId];
-            if (!cur) return state;
-
-            // Optimistic update already cleared previousJobId from `jobs` and
-            // dropped startErrors[kind]. Here we just slot in the new jobId
-            // and roll any newly-resolved CDN URLs back into the cache.
-            const nextProduct =
-              uploads?.product && !cur.product.remoteUrl
-                ? { ...cur.product, remoteUrl: uploads.product }
-                : cur.product;
-            const nextRefs = { ...(cur.references ?? {}) };
-            const refForKind = nextRefs[kind];
-            if (uploads?.reference && refForKind && !refForKind.remoteUrl) {
-              nextRefs[kind] = { ...refForKind, remoteUrl: uploads.reference };
-            }
-
-            return {
-              generationProjects: {
-                ...state.generationProjects,
-                [projectId]: {
-                  ...cur,
-                  product: nextProduct,
-                  references:
-                    Object.keys(nextRefs).length > 0 ? nextRefs : cur.references,
-                  jobIds: { ...cur.jobIds, [kind]: newJobId },
-                },
-              },
-            };
-          });
-        } catch (e) {
-          // User can retry by re-submitting the dialog; log so the failure is
-          // observable in DevTools instead of vanishing silently.
-          console.error("[jobs-store] submitRevision failed:", e);
-        }
-      },
-
-      retryGeneration: async (projectId: string, kind: AssetType) => {
-        const project = get().generationProjects[projectId];
-        if (!project) return;
-
-        const previousJobId = project.jobIds[kind];
-
-        // Optimistic clear — drop the failed marker and any stale job entry
-        // so the card flips to a queued/skeleton state immediately, mirroring
-        // submitRevision's pattern. Without this the failed pill lingers
-        // until /api/jobs returns (~5–10s).
-        set((state) => {
-          const cur = state.generationProjects[projectId];
-          if (!cur) return state;
-          const nextStartErrors = { ...cur.startErrors };
-          delete nextStartErrors[kind];
-          const nextJobIds = { ...cur.jobIds };
-          delete nextJobIds[kind];
-          const nextJobs = { ...state.jobs };
-          if (previousJobId) delete nextJobs[previousJobId];
-          return {
-            jobs: nextJobs,
-            generationProjects: {
-              ...state.generationProjects,
-              [projectId]: {
-                ...cur,
-                jobIds: nextJobIds,
-                startErrors: nextStartErrors,
-              },
-            },
-          };
-        });
-
-        // Rebuild a SubmitInput from the persisted project so kickOffKind
-        // hits the same prompt path it did the first time. We deliberately
-        // don't synthesize new settings — retry == redo with the same brief.
-        const input: SubmitInput = {
-          product: project.product,
-          references: project.references,
-          market: project.market,
-          brandMessage: project.brandMessage,
-          brandGuide: project.brandGuide,
-          assetTypes: [kind],
-          styleShotSettings: project.styleShotSettings,
-          shortVideoSettings: project.shortVideoSettings,
         };
-        await kickOffKind(projectId, kind, input, set);
-      },
-
-      removeProject: (projectId: string) => {
-        set((state) => {
-          const project = state.generationProjects[projectId];
-          if (!project) return state;
-          // Drop the project + any orphaned job records that belonged to it.
-          const ownedJobIds = new Set(
-            Object.values(project.jobIds).filter(Boolean) as string[],
-          );
-          const nextProjects = { ...state.generationProjects };
-          delete nextProjects[projectId];
-          const nextJobs: typeof state.jobs = {};
-          for (const [id, job] of Object.entries(state.jobs)) {
-            if (!ownedJobIds.has(id)) nextJobs[id] = job;
-          }
-          return { generationProjects: nextProjects, jobs: nextJobs };
+      });
+      const updated = get().generationProjects[projectId];
+      if (updated) {
+        void persistProject(projectId, {
+          jobIds: stripUndefined(updated.jobIds),
+          product: toProductPersisted(updated.product),
+          references: toReferencesPersisted(updated.references),
         });
-      },
+      }
+    } catch (e) {
+      console.error("[jobs-store] submitRevision failed:", e);
+    }
+  },
 
-      pollJob: async (jobId: string) => {
-        try {
-          const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
-          if (res.status === 404) return;
-          if (!res.ok) return;
-          const job = (await res.json()) as Job;
-          set((state) => ({ jobs: { ...state.jobs, [jobId]: job } }));
-        } catch (e) {
-          // Next tick retries automatically; log so transient failures are
-          // still visible while debugging.
-          console.error("[jobs-store] pollJob failed:", e);
-        }
-      },
-    }),
-    {
-      name: "lizy-jobs-store",
-      // Bumps:
-      //   v2 — brand shape changed from { status, result } to per-section + guide
-      //   v3 — text sections gained `result/applying/error` fields, so a v2
-      //        persisted state still crashes (`palette.result.length` on undefined).
-      //   v4 — strip brandGuide image dataUrls from persisted projects. Each
-      //        project was snapshotting full base64 logo + moodboard; after
-      //        ~10–20 projects this blew the localStorage quota and every new
-      //        setItem threw QuotaExceededError. Migration scrubs prior bloat.
-      // Anything < v3 resets the brand slice on load.
-      version: 4,
-      storage: createJSONStorage(() => localStorage),
-      // Manual rehydrate via <StoreRehydrate /> to avoid SSR mismatch.
-      skipHydration: true,
-      migrate: (persisted, version) => {
-        const p = (persisted ?? {}) as Partial<{
-          brand: unknown;
-          generationProjects: Store["generationProjects"];
-          jobs: Store["jobs"];
-        }>;
-        const brand = p.brand as Record<string, unknown> | null | undefined;
-        const palette = brand?.palette as Record<string, unknown> | undefined;
-        const isCurrent =
-          version >= 3 &&
-          !!brand &&
-          "guide" in brand &&
-          !!palette &&
-          "result" in palette;
-        // v3→v4: scrub brandGuide image dataUrls from already-persisted
-        // projects so we drop below the localStorage quota on next write.
-        const scrubbedProjects = p.generationProjects
-          ? Object.fromEntries(
-              Object.entries(p.generationProjects).map(([id, project]) => [
-                id,
-                stripProjectGuideImages(project),
-              ]),
-            )
-          : p.generationProjects;
-        return {
-          ...p,
-          brand: isCurrent ? (brand as unknown as BrandState) : INITIAL_BRAND,
-          generationProjects: scrubbedProjects,
-        } as Partial<Store>;
-      },
-      // ObjectURLs die at refresh — strip them. Brand non-ready states reset
-      // to idle (analyzing/error are mid-flight states, no value preserving).
-      partialize: (state) => ({
-        // Strip image blobs (objectUrl dies at refresh; dataUrl is too large
-        // to persist comfortably). Text drafts and applied values DO survive,
-        // so a user who typed colors/typography/mood doesn't lose them on
-        // refresh — they'll just need to re-upload the logo to flip back to
-        // "ready".
-        brand: stripBrandImages(state.brand),
-        generationProjects: Object.fromEntries(
-          Object.entries(state.generationProjects).map(([id, p]) => [
-            id,
-            stripProjectGuideImages({
-              ...p,
-              // Strip transient fields (objectUrl dies at refresh; dataUrl is
-              // huge base64). Keep remoteUrl — that's the persistent CDN URL
-              // we cache so revisions can run after a refresh.
-              product: { ...p.product, objectUrl: "", dataUrl: undefined },
-              references: p.references
-                ? Object.fromEntries(
-                    Object.entries(p.references).map(([k, r]) => [
-                      k,
-                      { ...r!, dataUrl: "" },
-                    ]),
-                  )
-                : undefined,
-            }),
-          ]),
-        ),
-        jobs: state.jobs,
-      }),
-    },
-  ),
-);
+  retryGeneration: async (projectId: string, kind: AssetType) => {
+    const project = get().generationProjects[projectId];
+    if (!project) return;
+
+    const previousJobId = project.jobIds[kind];
+
+    set((state) => {
+      const cur = state.generationProjects[projectId];
+      if (!cur) return state;
+      const nextStartErrors = { ...cur.startErrors };
+      delete nextStartErrors[kind];
+      const nextJobIds = { ...cur.jobIds };
+      delete nextJobIds[kind];
+      const nextJobs = { ...state.jobs };
+      if (previousJobId) delete nextJobs[previousJobId];
+      return {
+        jobs: nextJobs,
+        generationProjects: {
+          ...state.generationProjects,
+          [projectId]: {
+            ...cur,
+            jobIds: nextJobIds,
+            startErrors: nextStartErrors,
+          },
+        },
+      };
+    });
+    void persistProject(projectId, {
+      jobIds: stripUndefined(get().generationProjects[projectId]?.jobIds ?? {}),
+      startErrors: stripUndefined(
+        get().generationProjects[projectId]?.startErrors ?? {},
+      ),
+    });
+
+    const input: SubmitInput = {
+      product: project.product,
+      references: project.references,
+      market: project.market,
+      brandMessage: project.brandMessage,
+      brandGuide: project.brandGuide,
+      assetTypes: [kind],
+      styleShotSettings: project.styleShotSettings,
+      shortVideoSettings: project.shortVideoSettings,
+    };
+    await kickOffKind(projectId, kind, input, set, get);
+  },
+
+  removeProject: (projectId: string) => {
+    set((state) => {
+      const project = state.generationProjects[projectId];
+      if (!project) return state;
+      const ownedJobIds = new Set(
+        Object.values(project.jobIds).filter(Boolean) as string[],
+      );
+      const nextProjects = { ...state.generationProjects };
+      delete nextProjects[projectId];
+      const nextJobs: typeof state.jobs = {};
+      for (const [id, job] of Object.entries(state.jobs)) {
+        if (!ownedJobIds.has(id)) nextJobs[id] = job;
+      }
+      return { generationProjects: nextProjects, jobs: nextJobs };
+    });
+    void fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+      method: "DELETE",
+    }).catch((e) => {
+      console.error("[jobs-store] removeProject DELETE failed:", e);
+    });
+  },
+
+  pollJob: async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+      if (res.status === 404) return;
+      if (!res.ok) return;
+      const job = (await res.json()) as Job;
+      set((state) => ({ jobs: { ...state.jobs, [jobId]: job } }));
+    } catch (e) {
+      // Next tick retries automatically; log so transient failures are still
+      // visible while debugging.
+      console.error("[jobs-store] pollJob failed:", e);
+    }
+  },
+}));
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-// zustand's set signature inside `create()(persist(...))` is wide and not
-// re-exported cleanly — we pin the slice types we touch here.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Setter = (partial: any) => void;
+type Getter = () => Store;
 
-/**
- * Fire the logo-section interpret call against /api/brand/interpret and
- * patch the result back into brand.logo. Triggered automatically from
- * uploadBrandSectionImage("logo", ...) — the user never sees a button for
- * this; the brand name + wordmark style appear in the panel as soon as
- * the vision LLM responds. Errors leave the image in place but mark the
- * section idle so the user can retry by re-uploading.
- */
 async function interpretLogoImage(
   set: Setter,
+  get: Getter,
   payload: { imageDataUrl: string; fileName: string; mimeType?: string },
 ): Promise<void> {
   try {
@@ -856,8 +830,15 @@ async function interpretLogoImage(
           error: null,
         },
       };
-      return { brand: { ...nextBrand, guide: deriveGuide(nextBrand) } };
+      return {
+        brand: {
+          ...nextBrand,
+          status: nextBrand.logo.image || nextBrand.logo.result ? "ready" : "idle",
+          guide: deriveGuide(nextBrand),
+        },
+      };
     });
+    void persistBrandNow(get);
   } catch (e) {
     const message = e instanceof Error ? e.message : "로고 해석에 실패했습니다.";
     console.error("[brand] interpretLogoImage failed:", message);
@@ -870,11 +851,6 @@ async function interpretLogoImage(
   }
 }
 
-/**
- * Patch a section with its interpreted result, mark applied=draft, drop
- * applying/error, and rederive the brand guide. Section-typed so the result
- * shape matches the section's `result` slot exactly.
- */
 function applyInterpretResult(
   set: Setter,
   section: BrandTextSectionKind,
@@ -918,75 +894,215 @@ function applyInterpretResult(
         },
       };
     } else {
-      // Shape mismatch between request and response — leave state untouched
-      // (caller will surface a generic error via the catch).
       return state;
     }
     return { brand: { ...nextBrand, guide: deriveGuide(nextBrand) } };
   });
 }
 
-/**
- * Drop heavy base64 image fields from a project's brandGuide snapshot before
- * persisting. logo + moodboard each carry full base64 dataUrls that would
- * otherwise duplicate per-project and exhaust localStorage. Text fields
- * (palette hex, typography names, brandName, moodCaption) are tiny and stay.
- *
- * Trade-off: revisions submitted AFTER a refresh will not have the original
- * brand-guide images embedded. The structured text portions of the guide are
- * still sent, so the LLM keeps the brand intent. If we ever need to round-trip
- * the images, we should upload them to remote CDN once and store remoteUrls
- * here instead.
- */
-function stripProjectGuideImages(project: GenerationProject): GenerationProject {
-  if (!project.brandGuide) return project;
+/* ---------------------------- Brand persistence --------------------------- */
+
+function brandStateToPersisted(brand: BrandState): BrandPersisted {
   return {
-    ...project,
-    brandGuide: {
-      ...project.brandGuide,
-      logo: "",
-      moodboard: [],
+    logo: { result: brand.logo.result },
+    palette: {
+      text: brand.palette.text,
+      applied: brand.palette.applied,
+      result: brand.palette.result,
+    },
+    typography: {
+      text: brand.typography.text,
+      applied: brand.typography.applied,
+      result: brand.typography.result,
+    },
+    mood: {
+      text: brand.mood.text,
+      applied: brand.mood.applied,
+      result: brand.mood.result,
     },
   };
 }
 
-function stripBrandImages(brand: BrandState): BrandState {
-  // Drop image blobs/dataUrls (too transient/large to persist). applying
-  // resets to false — a half-fired apply doesn't survive refresh. error too.
-  const stripped: BrandState = {
+function hydrateBrand(
+  persisted: BrandPersisted | null,
+  current: BrandState,
+): BrandState {
+  if (!persisted) return current;
+  const next: BrandState = {
     status: "idle",
-    // Keep the logo `result` (brandName/wordmark) across refresh — only the
-    // image blob is too transient to persist. applying/error reset.
-    logo: { ...brand.logo, image: null, applying: false, error: null },
-    palette: {
-      ...brand.palette,
+    logo: {
       image: null,
+      result: persisted.logo?.result ?? null,
+      applying: false,
+      error: null,
+    },
+    palette: {
+      image: null,
+      text: persisted.palette?.text ?? "",
+      applied: persisted.palette?.applied ?? "",
+      result: persisted.palette?.result ?? [],
       applying: false,
       error: null,
     },
     typography: {
-      ...brand.typography,
       image: null,
+      text: persisted.typography?.text ?? "",
+      applied: persisted.typography?.applied ?? "",
+      result: persisted.typography?.result ?? null,
       applying: false,
       error: null,
     },
-    mood: { ...brand.mood, image: null, applying: false, error: null },
+    mood: {
+      image: null,
+      text: persisted.mood?.text ?? "",
+      applied: persisted.mood?.applied ?? "",
+      result: persisted.mood?.result ?? "",
+      applying: false,
+      error: null,
+    },
     guide: EMPTY_GUIDE,
   };
-  stripped.guide = deriveGuide(stripped);
-  return stripped;
+  // Logo image is non-persistent, but the wordmark/brand-name result is — so
+  // the brand can still be "ready" for generation after a refresh even with
+  // no visible logo blob.
+  if (next.logo.result) next.status = "ready";
+  next.guide = deriveGuide(next);
+  return next;
 }
 
-/**
- * Fire one /api/jobs POST for a given kind and patch the result back into the
- * store. Used by submitGeneration to do all kinds in the background after
- * the route has already navigated.
- */
+let brandFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Debounced flush. Typing fires set() on every keystroke; we batch those into
+// a single PUT 600ms after the last edit so we don't hammer the DB.
+function schedulePersistBrand(get: Getter): void {
+  if (typeof window === "undefined") return;
+  if (brandFlushTimer) clearTimeout(brandFlushTimer);
+  brandFlushTimer = setTimeout(() => {
+    brandFlushTimer = null;
+    void persistBrandNow(get);
+  }, 600);
+}
+
+// Immediate flush — used by mutations that should land in DB right away
+// (logo interpret success, apply success, clear, reset).
+async function persistBrandNow(get: Getter): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (brandFlushTimer) {
+    clearTimeout(brandFlushTimer);
+    brandFlushTimer = null;
+  }
+  const payload = brandStateToPersisted(get().brand);
+  try {
+    const res = await fetch("/api/brand", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brand: payload }),
+    });
+    if (!res.ok) {
+      console.error("[jobs-store] persistBrand non-ok:", res.status);
+    }
+  } catch (e) {
+    console.error("[jobs-store] persistBrand failed:", e);
+  }
+}
+
+/* --------------------------- Project persistence -------------------------- */
+
+function toProductPersisted(p: ProductAsset): {
+  fileName: string;
+  fileSize: number;
+  remoteUrl?: string;
+} {
+  return {
+    fileName: p.fileName,
+    fileSize: p.fileSize,
+    ...(p.remoteUrl ? { remoteUrl: p.remoteUrl } : {}),
+  };
+}
+
+function toReferencesPersisted(
+  refs: GenerationProject["references"],
+):
+  | Partial<Record<AssetType, { fileName: string; remoteUrl?: string }>>
+  | undefined {
+  if (!refs) return undefined;
+  const out: Partial<Record<AssetType, { fileName: string; remoteUrl?: string }>> =
+    {};
+  for (const [k, v] of Object.entries(refs)) {
+    if (!v) continue;
+    out[k as AssetType] = {
+      fileName: v.fileName,
+      ...(v.remoteUrl ? { remoteUrl: v.remoteUrl } : {}),
+    };
+  }
+  return out;
+}
+
+function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as T;
+}
+
+async function postProject(project: GenerationProject): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: project.id,
+        name: project.name,
+        market: project.market,
+        brandMessage: project.brandMessage,
+        brandGuide: project.brandGuide,
+        product: toProductPersisted(project.product),
+        references: toReferencesPersisted(project.references),
+        assetTypes: project.assetTypes,
+        styleShotSettings: project.styleShotSettings,
+        shortVideoSettings: project.shortVideoSettings,
+        jobIds: stripUndefined(project.jobIds),
+        startErrors: stripUndefined(project.startErrors),
+        createdAt: project.createdAt,
+      }),
+    });
+    if (!res.ok) {
+      console.error("[jobs-store] postProject non-ok:", res.status);
+    }
+  } catch (e) {
+    console.error("[jobs-store] postProject failed:", e);
+  }
+}
+
+async function persistProject(
+  projectId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      console.error("[jobs-store] persistProject non-ok:", res.status);
+    }
+  } catch (e) {
+    console.error("[jobs-store] persistProject failed:", e);
+  }
+}
+
+/* ------------------------------- Generation ------------------------------- */
+
 async function kickOffKind(
   projectId: string,
   kind: AssetType,
   input: SubmitInput,
   set: Setter,
+  get: Getter,
 ): Promise<void> {
   try {
     const res = await fetch("/api/jobs", {
@@ -1024,7 +1140,6 @@ async function kickOffKind(
     set((state: { generationProjects: Record<string, GenerationProject> }) => {
       const cur = state.generationProjects[projectId];
       if (!cur) return state;
-      // Cache resolved CDN URLs so revisions / sibling kinds can skip re-upload.
       const nextProduct =
         data.uploads?.product && !cur.product.remoteUrl
           ? { ...cur.product, remoteUrl: data.uploads.product }
@@ -1047,6 +1162,14 @@ async function kickOffKind(
         },
       };
     });
+    const updated = get().generationProjects[projectId];
+    if (updated) {
+      void persistProject(projectId, {
+        jobIds: stripUndefined(updated.jobIds),
+        product: toProductPersisted(updated.product),
+        references: toReferencesPersisted(updated.references),
+      });
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : `${kind} 생성 요청 실패`;
     set((state: { generationProjects: Record<string, GenerationProject> }) => {
@@ -1062,6 +1185,12 @@ async function kickOffKind(
         },
       };
     });
+    const after = get().generationProjects[projectId];
+    if (after) {
+      void persistProject(projectId, {
+        startErrors: stripUndefined(after.startErrors),
+      });
+    }
   }
 }
 
@@ -1116,9 +1245,6 @@ export function deriveProjectStatus(
   if (views.length === 0) return "pending";
   const failed = views.filter((v) => v.status === "failed");
   if (failed.length === views.length) return "failed";
-  // Partial failure is "sticky" — if any asset failed we surface it even when
-  // others are still running, so the user isn't lied to with "생성 중" while
-  // half the project is actually broken and waiting on a retry click.
   if (failed.length > 0) return "partial_failed";
   const allReady = views.every((v) => v.status === "ready");
   if (allReady) return "review";

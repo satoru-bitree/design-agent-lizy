@@ -30,6 +30,16 @@ export function ProjectDetailClient({
   const jobs = useJobsStore((s) => s.jobs);
   const pollJob = useJobsStore((s) => s.pollJob);
   const removeProject = useJobsStore((s) => s.removeProject);
+  const loadProject = useJobsStore((s) => s.loadProject);
+  const hydrated = useJobsStore((s) => s.hydrated);
+
+  // Refresh this project from DB on mount. Covers two cases:
+  //   - Direct URL hit / hard refresh — the project is in DB but not yet in
+  //     the store (loadProjects hasn't finished, or never ran).
+  //   - Navigating back to a project after some time — pull fresh job state.
+  useEffect(() => {
+    void loadProject(projectId);
+  }, [projectId, loadProject]);
 
   const handleDelete = () => {
     removeProject(projectId);
@@ -117,6 +127,16 @@ export function ProjectDetailClient({
   }, [generated, fallbackProject, jobs]);
 
   if (!data) {
+    // Initial DB load hasn't finished yet — render a quiet placeholder
+    // instead of jumping to "not found", which would flash for ~100ms even
+    // when the row exists.
+    if (!hydrated) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-16 text-center text-fg-dim">
+          <p className="font-kr text-[13px]">프로젝트를 불러오는 중…</p>
+        </div>
+      );
+    }
     return <NotFoundView projectId={projectId} />;
   }
 
