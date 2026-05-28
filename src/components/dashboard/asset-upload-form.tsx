@@ -175,12 +175,25 @@ export function AssetUploadForm({
   };
 
   const toggleType = (t: AssetType) => {
+    const willRemove = assetTypes.has(t);
     setAssetTypes((prev) => {
       const next = new Set(prev);
       if (next.has(t)) next.delete(t);
       else next.add(t);
       return next;
     });
+    // Deselecting a type drops its per-type config so it can't resurface (e.g.
+    // a stale 연출 on the confirm screen) and never ships at submit.
+    if (willRemove) {
+      setReferenceFor(t, null);
+      if (t === "style_shot") {
+        setStyleShotPreset(null);
+        setStyleShotRequest("");
+      } else if (t === "short_video") {
+        setShortVideoConcept(null);
+        setShortVideoRequest("");
+      }
+    }
   };
 
   /* ----------------------------- Step validity ---------------------------- */
