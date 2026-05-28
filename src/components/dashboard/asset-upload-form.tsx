@@ -11,6 +11,7 @@ import {
   X,
   Check,
   AlertTriangle,
+  Info,
   Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -231,6 +232,31 @@ export function AssetUploadForm({
     setStep((s) => Math.min(4, s + 1));
   };
   const goBack = () => setStep((s) => Math.max(1, s - 1));
+
+  // What the current step still needs before "다음" unlocks — surfaced next to
+  // the button so a disabled state is never a dead end. Step 3 names the exact
+  // incomplete tab so the user knows where to look.
+  const missingHints: string[] = [];
+  if (step === 1 && !step1Valid) {
+    missingHints.push("제품 이미지를 업로드하세요");
+  } else if (step === 2 && !step2Valid) {
+    missingHints.push("디자인 유형을 1개 이상 선택하세요");
+  } else if (step === 3) {
+    if (assetTypes.has("style_shot") && !styleShotComplete) {
+      missingHints.push(
+        styleShotPreset === null
+          ? "스타일 샷 연출을 선택하세요"
+          : "스타일 샷 프롬프트를 입력하세요",
+      );
+    }
+    if (assetTypes.has("short_video") && !shortVideoComplete) {
+      missingHints.push(
+        shortVideoConcept === null
+          ? "숏폼 영상 컨셉을 선택하세요"
+          : "숏폼 영상 프롬프트를 입력하세요",
+      );
+    }
+  }
 
   /* ------------------------------ Submission ------------------------------ */
 
@@ -529,6 +555,24 @@ export function AssetUploadForm({
         )}
       </section>
 
+      {/* What's still needed to advance (hidden on the always-enabled Step 4) */}
+      {step < 4 && missingHints.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+          <Info
+            className="mt-px h-3.5 w-3.5 shrink-0 text-mint"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+          <div className="flex flex-col gap-0.5">
+            {missingHints.map((h) => (
+              <span key={h} className="font-kr text-[12.5px] text-fg-dim">
+                {h}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Nav bar */}
       <div className="flex items-center justify-between gap-3">
         <button
@@ -710,8 +754,7 @@ function PackageOptions({
   return (
     <div className="flex flex-col gap-[18px]">
       <p className="font-kr text-[13px] leading-[1.6] text-fg-dim">
-        패키지 디자인은 추가 옵션이 없습니다. 참고하고 싶은 스타일 이미지가 있다면
-        아래에 올려주세요. (선택)
+        참고하고 싶은 스타일 이미지가 있다면 아래에 올려주세요. (선택)
       </p>
       <Field label="스타일 레퍼런스 (선택)">
         <ReferenceRow kind="package" file={file} onChange={onChange} />
@@ -773,9 +816,6 @@ function StyleShotOptions({
               placeholder="예: Using the uploaded product as the primary anchor, photograph a moody editorial scene with soft directional window light, handcrafted ceramics, and an asymmetric editorial composition. Vertical 4:5."
               className="w-full resize-y rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
             />
-            <span className="font-kr text-meta text-fg-muted">
-              같은 프롬프트로 시드만 달리해 2장이 생성됩니다.
-            </span>
           </Field>
           <Field label="스타일 레퍼런스 (선택)">
             <ReferenceRow
@@ -838,9 +878,6 @@ function ShortVideoOptions({
             placeholder="예: Slow cinematic dolly-in toward the product, soft golden rim light sweeping across the bottle from the left, faint dust particles drifting in warm backlight, shallow depth of field, 9:16, 5s."
             className="w-full resize-y rounded-lg bg-surface-2 px-4 py-[14px] font-kr text-[14px] text-fg outline-none transition-shadow duration-micro ease-lz placeholder:text-fg-faint focus:ring-1 focus:ring-inset focus:ring-mint"
           />
-          <span className="font-kr text-meta text-fg-muted">
-            입력한 프롬프트가 Seedance에 그대로 전달됩니다.
-          </span>
         </Field>
       )}
     </div>

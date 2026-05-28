@@ -127,7 +127,7 @@ export const STYLE_SHOT_PRESETS: {
   {
     id: "custom",
     label: "직접 입력",
-    description: "프롬프트를 직접 작성해 동일 프롬프트로 2장 생성",
+    description: "프롬프트를 직접 작성해 생성",
   },
 ];
 
