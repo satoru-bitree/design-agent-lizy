@@ -14,7 +14,7 @@ export function BrandGuideClient({ fromWizard }: { fromWizard?: boolean }) {
       {/* When arriving mid-request from the Step 4 warning, leave room so the
           sticky completion bar doesn't cover the panel's last section. */}
       <div className={fromWizard ? "pb-24" : undefined}>
-        <div className="mx-auto flex w-full max-w-[680px] flex-col gap-6">
+        <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
           <div>
             <h1 className="font-display text-h1 font-bold text-fg">
               브랜드 가이드
@@ -32,7 +32,7 @@ export function BrandGuideClient({ fromWizard }: { fromWizard?: boolean }) {
 
       {fromWizard && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 backdrop-blur">
-          <div className="mx-auto flex w-full max-w-[680px] items-center justify-between gap-3 px-5 py-3 sm:px-0">
+          <div className="mx-auto flex w-full max-w-[760px] items-center justify-between gap-3 px-5 py-3 sm:px-0">
             <span className="font-kr text-[12px] text-fg-muted">
               에셋 요청을 위해 브랜드 가이드를 설정 중입니다
             </span>

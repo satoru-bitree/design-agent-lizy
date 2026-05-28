@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, X, Check } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { PaletteSync } from "@/components/dashboard/palette-sync";
@@ -52,24 +52,26 @@ function Header({
   status: "idle" | "ready";
   onReset: () => void;
 }) {
-  const title = status === "ready" ? "설정 적용됨" : "설정 필요";
+  // Two-step inline confirm so "전체 초기화" can't wipe everything on a misclick.
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirming]);
 
   return (
     <div className="flex items-start justify-between gap-3">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <h2 className="font-kr text-h3 font-bold text-fg">{title}</h2>
-        <div className="font-kr text-meta text-fg-muted">
-          로고는 필수 · 컬러·타이포그래피·무드는 설명하면 자동 적용
-        </div>
+      {/* Overall state lives in the page heading/description above — the panel
+          header only carries the how-to line + the glanceable status badge. */}
+      <div className="min-w-0 font-kr text-meta text-fg-muted">
+        로고는 필수 · 컬러·타이포그래피·무드는 설명하면 자동 적용
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
         {status === "ready" ? (
-          <span
-            className={cn(
-              "inline-flex items-center gap-2 rounded-pill bg-mint-soft px-[11px] py-[5px] text-[12px] text-mint",
-            )}
-          >
+          <span className="inline-flex items-center gap-2 rounded-pill bg-mint-soft px-[11px] py-[5px] text-[12px] text-mint">
             <StatusDot tone="active" size={7} />
             LIVE SYNC
           </span>
@@ -79,13 +81,35 @@ function Header({
             대기
           </span>
         )}
-        <button
-          type="button"
-          onClick={onReset}
-          className="rounded-pill border border-border bg-surface-2 px-2.5 py-1 font-kr text-[11px] text-fg-dim outline-none transition-colors hover:border-mint hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
-        >
-          전체 초기화
-        </button>
+        {confirming ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="rounded-pill border border-border bg-surface-2 px-2.5 py-1 font-kr text-[11px] text-fg-dim outline-none transition-colors hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(false);
+                onReset();
+              }}
+              className="rounded-pill border border-state-danger bg-surface-2 px-2.5 py-1 font-kr text-[11px] font-semibold text-state-danger outline-none transition-colors hover:bg-state-danger hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+            >
+              초기화
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="rounded-pill border border-border bg-surface-2 px-2.5 py-1 font-kr text-[11px] text-fg-dim outline-none transition-colors hover:border-mint hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
+          >
+            전체 초기화
+          </button>
+        )}
       </div>
     </div>
   );
