@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: "브랜드 가이드",
 };
 
-export default function BrandPage() {
-  return <BrandGuideClient />;
+export default function BrandPage({
+  searchParams,
+}: {
+  searchParams: { from?: string };
+}) {
+  return <BrandGuideClient fromWizard={searchParams.from === "wizard"} />;
 }

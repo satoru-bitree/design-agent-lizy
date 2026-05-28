@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AssetType } from "@/lib/mock-data";
-import type { BrandState } from "@/lib/stores/jobs-store";
+import { useJobsStore, type BrandState } from "@/lib/stores/jobs-store";
 import {
   SHORT_VIDEO_CONCEPTS,
   STYLE_SHOT_PRESETS,
@@ -89,26 +89,39 @@ export function AssetUploadForm({
   submitting = false,
   onSubmit,
 }: AssetUploadFormProps) {
-  const [step, setStep] = useState(1);
-  const [file, setFile] = useState<File | null>(null);
+  // Restore an in-progress draft (e.g. after a round trip to /brand). Read
+  // once, non-reactively — the store isn't subscribed here, so draft writes
+  // don't re-render the form.
+  const draft = useJobsStore.getState().wizardDraft;
+
+  const [step, setStep] = useState(draft?.step ?? 1);
+  const [file, setFile] = useState<File | null>(draft?.file ?? null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [referenceFiles, setReferenceFiles] = useState<
     Partial<Record<AssetType, File>>
-  >({});
-  const [market, setMarket] = useState<string>(MARKETS[0]);
+  >(draft?.referenceFiles ?? {});
+  const [market, setMarket] = useState<string>(draft?.market ?? MARKETS[0]);
   // Start empty: the stepped flow asks the user to actively choose a type
   // rather than defaulting to all three.
-  const [assetTypes, setAssetTypes] = useState<Set<AssetType>>(new Set());
-  const [activeTab, setActiveTab] = useState<AssetType>("package");
-  const [message, setMessage] = useState("");
+  const [assetTypes, setAssetTypes] = useState<Set<AssetType>>(
+    new Set(draft?.assetTypes ?? []),
+  );
+  const [activeTab, setActiveTab] = useState<AssetType>(
+    draft?.activeTab ?? "package",
+  );
+  const [message, setMessage] = useState(draft?.message ?? "");
   const [styleShotPreset, setStyleShotPreset] = useState<
     StyleShotPreset | null
-  >(null);
-  const [styleShotRequest, setStyleShotRequest] = useState("");
+  >(draft?.styleShotPreset ?? null);
+  const [styleShotRequest, setStyleShotRequest] = useState(
+    draft?.styleShotRequest ?? "",
+  );
   const [shortVideoConcept, setShortVideoConcept] = useState<
     ShortVideoConcept | null
-  >(null);
-  const [shortVideoRequest, setShortVideoRequest] = useState("");
+  >(draft?.shortVideoConcept ?? null);
+  const [shortVideoRequest, setShortVideoRequest] = useState(
+    draft?.shortVideoRequest ?? "",
+  );
 
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) setFile(accepted[0]);
@@ -140,6 +153,17 @@ export function AssetUploadForm({
     const first = ASSET_TYPE_ORDER.find((t) => assetTypes.has(t));
     if (first) setActiveTab(first);
   }, [assetTypes, activeTab]);
+
+  // Consume the restored draft once. A draft only ever exists because the user
+  // left for brand setup via "설정하기" (handleGoToBrandSetup) — so clearing it
+  // on mount means every other way of landing on the dashboard starts fresh.
+  // React preserves the state the initializers captured across the StrictMode
+  // remount, so the restored values survive this clear.
+  useEffect(() => {
+    if (useJobsStore.getState().wizardDraft) {
+      useJobsStore.getState().clearWizardDraft();
+    }
+  }, []);
 
   const setReferenceFor = (kind: AssetType, f: File | null) => {
     setReferenceFiles((prev) => {
@@ -239,6 +263,24 @@ export function AssetUploadForm({
       brandMessage: message,
       styleShotSettings,
       shortVideoSettings,
+    });
+  };
+
+  // Save the in-progress wizard before jumping to brand setup so it can be
+  // restored on return. This is the *only* place a draft is written.
+  const handleGoToBrandSetup = () => {
+    useJobsStore.getState().setWizardDraft({
+      step,
+      file,
+      referenceFiles,
+      market,
+      assetTypes: ASSET_TYPE_ORDER.filter((t) => assetTypes.has(t)),
+      activeTab,
+      message,
+      styleShotPreset,
+      styleShotRequest,
+      shortVideoConcept,
+      shortVideoRequest,
     });
   };
 
@@ -469,6 +511,7 @@ export function AssetUploadForm({
             message={message}
             brandStatus={brandStatus}
             onEdit={setStep}
+            onSetupBrand={handleGoToBrandSetup}
           />
         )}
       </section>
@@ -805,6 +848,7 @@ function Step4Confirm({
   message,
   brandStatus,
   onEdit,
+  onSetupBrand,
 }: {
   previewUrl: string | null;
   fileName: string;
@@ -815,6 +859,7 @@ function Step4Confirm({
   message: string;
   brandStatus: BrandState["status"];
   onEdit: (step: number) => void;
+  onSetupBrand: () => void;
 }) {
   const presetLabel = styleShotPreset
     ? STYLE_SHOT_PRESETS.find((p) => p.id === styleShotPreset)?.label
@@ -916,7 +961,8 @@ function Step4Confirm({
             </span>
           </div>
           <Link
-            href="/brand"
+            href="/brand?from=wizard"
+            onClick={onSetupBrand}
             className="shrink-0 rounded-sm font-kr text-[13px] font-semibold text-mint underline-offset-2 outline-none hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
           >
             설정하기

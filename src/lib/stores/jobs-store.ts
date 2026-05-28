@@ -6,7 +6,9 @@ import type {
   GenerationInput,
   Job,
   JobVariant,
+  ShortVideoConcept,
   ShortVideoSettings,
+  StyleShotPreset,
   StyleShotSettings,
 } from "@/lib/ai/types";
 import { compressImageFile } from "@/lib/image-compress";
@@ -231,6 +233,26 @@ export type AssetView =
   | { kind: AssetType; status: "ready"; variants: JobVariant[] }
   | { kind: AssetType; status: "failed"; error: string };
 
+/**
+ * In-memory snapshot of the dashboard wizard's in-progress input. Lets the user
+ * jump to /brand (to set up the brand guide) and come back without losing what
+ * they were filling in. NOT persisted — File objects can't go to the DB and the
+ * round trip is client-side navigation, so memory is enough. Cleared on submit.
+ */
+export type WizardDraft = {
+  step: number;
+  file: File | null;
+  referenceFiles: Partial<Record<AssetType, File>>;
+  market: string;
+  assetTypes: AssetType[];
+  activeTab: AssetType;
+  message: string;
+  styleShotPreset: StyleShotPreset | null;
+  styleShotRequest: string;
+  shortVideoConcept: ShortVideoConcept | null;
+  shortVideoRequest: string;
+};
+
 /* -------------------------------------------------------------------------- */
 /* Store                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -257,6 +279,11 @@ type Store = {
 
   generationProjects: Record<string, GenerationProject>;
   jobs: Record<string, Job>;
+
+  /** Dashboard wizard draft — survives nav to /brand and back. */
+  wizardDraft: WizardDraft | null;
+  setWizardDraft: (draft: WizardDraft) => void;
+  clearWizardDraft: () => void;
 
   submitGeneration: (input: SubmitInput) => Promise<string>;
   submitRevision: (input: SubmitRevisionInput) => Promise<void>;
@@ -518,6 +545,10 @@ export const useJobsStore = create<Store>()((set, get) => ({
 
   generationProjects: {},
   jobs: {},
+
+  wizardDraft: null,
+  setWizardDraft: (draft) => set({ wizardDraft: draft }),
+  clearWizardDraft: () => set({ wizardDraft: null }),
 
   submitGeneration: async (input) => {
     const projectId = makeProjectId();
