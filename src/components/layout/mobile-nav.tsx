@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 const TABS: readonly { label: string; href: string }[] = [
   { label: "대시보드", href: "/dashboard" },
   { label: "프로젝트", href: "/projects" },
+  { label: "브랜드 가이드", href: "/brand" },
   { label: "에셋", href: "/assets" },
   { label: "워크플로우", href: "/workflows" },
 ] as const;

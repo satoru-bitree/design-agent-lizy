@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, Check } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { PaletteSync } from "@/components/dashboard/palette-sync";
 import { BrandSectionUpload } from "@/components/dashboard/brand-upload-zone";
@@ -52,15 +52,14 @@ function Header({
   status: "idle" | "ready";
   onReset: () => void;
 }) {
-  const title =
-    status === "ready" ? "브랜드 가이드 적용됨" : "브랜드 가이드 미적용";
+  const title = status === "ready" ? "설정 적용됨" : "설정 필요";
 
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="flex min-w-0 flex-col gap-1.5">
         <h2 className="font-kr text-h3 font-bold text-fg">{title}</h2>
         <div className="font-kr text-meta text-fg-muted">
-          로고는 필수 · 컬러·타이포·무드는 설명하면 자동 적용
+          로고는 필수 · 컬러·타이포그래피·무드는 설명하면 자동 적용
         </div>
       </div>
 
@@ -143,11 +142,46 @@ function LogoSection() {
           fit="contain"
           bg="#F5F5F5"
         />
+      ) : logo.result ? (
+        // Post-refresh: the image blob isn't persisted, but the analyzed
+        // result is — show a "saved" state so it doesn't look unset, with a
+        // re-upload affordance.
+        <LogoSavedCard
+          brandName={logo.result.brandName}
+          onReupload={(f) => upload("logo", f)}
+        />
       ) : (
         <BrandSectionUpload
           label="로고 이미지 업로드"
           onFile={(f) => upload("logo", f)}
         />
+      )}
+      {logo.applying && (
+        // The result (brandName + wordmark) is only persisted once this
+        // background vision analysis succeeds — surface it so the user doesn't
+        // refresh away before it's saved. High-contrast banner rather than a
+        // bare spinner: prefers-reduced-motion freezes the spin globally, so
+        // color + text must carry the state on their own.
+        <div className="flex items-center gap-2 rounded-md border border-mint/40 bg-mint-soft px-3 py-2.5">
+          <Loader2
+            className="h-4 w-4 shrink-0 animate-spin text-mint"
+            strokeWidth={2.5}
+          />
+          <span className="font-kr text-[12px] font-medium leading-[1.4] text-mint">
+            로고 분석 중… 완료되면 자동 저장됩니다. 잠시만 기다려 주세요.
+          </span>
+        </div>
+      )}
+      {logo.image && logo.result && !logo.applying && (
+        // Positive confirmation that the background analysis finished and the
+        // result is now persisted — pairs with the visible image preview.
+        <div className="flex items-center gap-2 rounded-md border border-mint/40 bg-mint-soft px-3 py-2.5">
+          <Check className="h-4 w-4 shrink-0 text-mint" strokeWidth={2.5} />
+          <span className="font-kr text-[12px] font-medium leading-[1.4] text-mint">
+            로고 분석 완료 · 저장됨
+            {logo.result.brandName ? ` · ${logo.result.brandName}` : ""}
+          </span>
+        </div>
       )}
       {logo.error && (
         <div
@@ -158,6 +192,39 @@ function LogoSection() {
         </div>
       )}
     </SectionShell>
+  );
+}
+
+function LogoSavedCard({
+  brandName,
+  onReupload,
+}: {
+  brandName: string;
+  onReupload: (file: File) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2.5 rounded-md border border-mint/30 bg-mint-soft p-3.5">
+      <div className="flex items-center gap-1.5">
+        <Check className="h-4 w-4 shrink-0 text-mint" strokeWidth={2.25} />
+        <span className="font-kr text-[12px] font-semibold text-mint">
+          로고 분석 완료 · 저장됨
+        </span>
+      </div>
+      {brandName && (
+        <div className="font-kr text-[13px] text-fg">
+          브랜드명 <span className="font-semibold">{brandName}</span>
+        </div>
+      )}
+      <p className="font-kr text-[11px] leading-[1.5] text-fg-muted">
+        원본 로고 이미지는 새로고침 시 표시되지 않지만, 분석된 브랜드 정보는
+        저장되어 생성에 그대로 사용됩니다.
+      </p>
+      <BrandSectionUpload
+        label="로고 다시 업로드"
+        onFile={onReupload}
+        compact
+      />
+    </div>
   );
 }
 
@@ -205,7 +272,7 @@ function PaletteSection() {
 function PaletteEmpty() {
   return (
     <div className="flex h-[60px] items-center justify-center rounded-md border border-dashed border-border-strong/70 bg-surface-2 font-kr text-[11px] text-fg-faint">
-      컬러 분위기를 설명하고 적용을 누르세요
+      컬러 분위기를 설명하고 ‘적용’을 누르세요
     </div>
   );
 }

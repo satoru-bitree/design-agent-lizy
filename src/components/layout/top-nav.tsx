@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { label: "대시보드", href: "/dashboard" },
   { label: "프로젝트", href: "/projects" },
+  { label: "브랜드 가이드", href: "/brand" },
   { label: "에셋", href: "/assets" },
   { label: "워크플로우", href: "/workflows" },
 ] as const;
@@ -75,13 +76,13 @@ export function TopNav({ activeRoute, className }: TopNavProps) {
         >
           <Bell className="h-[18px] w-[18px]" strokeWidth={1.5} />
         </button>
-        <button
-          type="button"
-          aria-label="설정"
+        <Link
+          href="/brand"
+          aria-label="브랜드 가이드 설정"
           className="flex cursor-pointer items-center rounded-sm outline-none transition-colors hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
         >
           <Settings className="h-[18px] w-[18px]" strokeWidth={1.5} />
-        </button>
+        </Link>
         <div
           aria-label="사용자 프로필"
           className="h-8 w-8 shrink-0 rounded-full border-[1.5px] border-mint"
