@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { SideNav } from "@/components/layout/side-nav";
 import { BottomBar } from "@/components/layout/bottom-bar";
 import { ProjectDetailClient } from "@/components/projects/project-detail-client";
 import { getProject } from "@/lib/mock-data";
@@ -19,21 +18,17 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const fallbackProject = getProject(params.id) ?? null;
 
   return (
-    <div className="flex">
-      <SideNav className="sticky top-16 hidden h-[calc(100vh-4rem)] lg:flex" />
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col">
+      <main className="flex-1 px-5 py-6 sm:px-8 sm:py-8">
+        <div className="mx-auto max-w-screen-2xl space-y-8">
+          <ProjectDetailClient
+            projectId={params.id}
+            fallbackProject={fallbackProject}
+          />
+        </div>
+      </main>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="flex-1 px-5 py-6 sm:px-8 sm:py-8">
-          <div className="mx-auto max-w-screen-2xl space-y-8">
-            <ProjectDetailClient
-              projectId={params.id}
-              fallbackProject={fallbackProject}
-            />
-          </div>
-        </main>
-
-        <BottomBar />
-      </div>
+      <BottomBar />
     </div>
   );
 }
