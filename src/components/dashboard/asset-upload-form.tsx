@@ -11,7 +11,6 @@ import {
   X,
   Check,
   AlertTriangle,
-  Info,
   Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -557,19 +556,19 @@ export function AssetUploadForm({
 
       {/* What's still needed to advance (hidden on the always-enabled Step 4) */}
       {step < 4 && missingHints.length > 0 && (
-        <div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
-          <Info
-            className="mt-px h-3.5 w-3.5 shrink-0 text-mint"
-            strokeWidth={1.75}
-            aria-hidden
-          />
-          <div className="flex flex-col gap-0.5">
-            {missingHints.map((h) => (
-              <span key={h} className="font-kr text-[12.5px] text-fg-dim">
-                {h}
-              </span>
-            ))}
-          </div>
+        <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 px-3.5 py-2.5">
+          {missingHints.map((h) => (
+            <p
+              key={h}
+              className="font-kr text-[12.5px] leading-[1.6] text-fg-dim"
+            >
+              <span
+                aria-hidden
+                className="relative top-[-1px] mr-2 inline-block h-1 w-1 rounded-full bg-mint align-middle"
+              />
+              {h}
+            </p>
+          ))}
         </div>
       )}
 
@@ -963,18 +962,18 @@ function Step4Confirm({
         {(hasDirection || trimmedMessage) && (
           <SummaryGroup onEdit={() => onEdit(3)}>
             {hasDirection && (
-              <DefRow label="연출">
+              <DefRow label="연출 · 컨셉">
                 <div className="flex flex-wrap gap-1.5">
                   {presetLabel && (
-                    <Chip>
+                    <Chip ariaLabel={`스타일 샷 연출: ${presetLabel}`}>
                       <span aria-hidden>📸</span>
-                      {ASSET_TYPE_LABEL.style_shot} · {presetLabel}
+                      {presetLabel}
                     </Chip>
                   )}
                   {conceptLabel && (
-                    <Chip>
+                    <Chip ariaLabel={`숏폼 영상 컨셉: ${conceptLabel}`}>
                       <span aria-hidden>🎬</span>
-                      {ASSET_TYPE_LABEL.short_video} · {conceptLabel}
+                      {conceptLabel}
                     </Chip>
                   )}
                 </div>
@@ -1062,9 +1061,18 @@ function DefRow({
   );
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
+function Chip({
+  children,
+  ariaLabel,
+}: {
+  children: React.ReactNode;
+  ariaLabel?: string;
+}) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-pill border border-border-strong bg-surface-3 px-2.5 py-1 font-kr text-[12px] text-fg-dim">
+    <span
+      aria-label={ariaLabel}
+      className="inline-flex items-center gap-1 rounded-pill border border-border-strong bg-surface-3 px-2.5 py-1 font-kr text-[12px] text-fg-dim"
+    >
       {children}
     </span>
   );
