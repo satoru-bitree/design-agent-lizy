@@ -12,6 +12,7 @@ import type {
   StyleShotSettings,
 } from "@/lib/ai/types";
 import { compressImageFile } from "@/lib/image-compress";
+import { extractDominantColors, parseHexList } from "@/lib/color-extract";
 import type {
   AssetType,
   BrandGuide,
@@ -447,10 +448,15 @@ export const useJobsStore = create<Store>()((set, get) => ({
         fileName: file.name,
         mimeType: file.type || undefined,
       });
-    } else {
-      // Non-logo image upload doesn't change persistable shape (image isn't
-      // persisted) — no PUT needed.
+    } else if (section === "palette") {
+      // Palette image is a seed, not a competing source of truth: extract the
+      // dominant colors client-side and prefill the text input. The user still
+      // presses 적용, so there's a single authoritative path into the guide and
+      // no last-write-wins fight with a typed description.
+      void seedPaletteFromImage(get, dataUrl);
     }
+    // Other non-logo uploads (mood) feed the guide directly via deriveGuide and
+    // don't change persistable shape (image isn't persisted) — no extra work.
   },
 
   setBrandSectionText: (section, text) => {
@@ -466,6 +472,21 @@ export const useJobsStore = create<Store>()((set, get) => ({
   applyBrandSection: async (section) => {
     const draft = get().brand[section].text.trim();
     if (!draft) return;
+
+    // Palette draft that's pure hex (e.g. seeded from an image, or typed by
+    // hand) applies verbatim — routing exact colors through the LLM would let
+    // it "interpret" them into slightly different ones.
+    if (section === "palette") {
+      const hexes = parseHexList(draft);
+      if (hexes) {
+        applyInterpretResult(set, "palette", draft, {
+          section: "palette",
+          palette: hexes,
+        });
+        void persistBrandNow(get);
+        return;
+      }
+    }
 
     set((state) => ({
       brand: {
@@ -879,6 +900,23 @@ async function interpretLogoImage(
         logo: { ...state.brand.logo, applying: false, error: message },
       },
     }));
+  }
+}
+
+async function seedPaletteFromImage(
+  get: Getter,
+  imageDataUrl: string,
+): Promise<void> {
+  try {
+    const hexes = await extractDominantColors(imageDataUrl, 5);
+    if (hexes.length === 0) return;
+    // Reuse the text action so the draft persists like any typed input. The
+    // user reviews these and presses 적용; pure-hex drafts skip the LLM (see
+    // applyBrandSection), so the extracted colors land verbatim.
+    get().setBrandSectionText("palette", hexes.join(", "));
+  } catch (e) {
+    // Non-fatal: the image still previews and the user can type colors by hand.
+    console.error("[brand] seedPaletteFromImage failed:", e);
   }
 }
 
