@@ -20,7 +20,6 @@ import { cn } from "@/lib/utils";
 
 export function BrandGuidePanel() {
   const brand = useJobsStore((s) => s.brand);
-  const reset = useJobsStore((s) => s.resetBrand);
 
   // Load Google Fonts for whichever family the interpreter returned, so the
   // typography preview swaps to the actual face — see comments in the
@@ -33,8 +32,6 @@ export function BrandGuidePanel() {
 
   return (
     <aside className="flex flex-col gap-6 rounded-xl border border-border bg-surface-1 p-5 transition-colors duration-micro ease-lz hover:border-border-strong sm:p-6">
-      <Header status={brand.status} onReset={reset} />
-
       <LogoSection />
       <PaletteSection />
       <TypographySection />
@@ -45,7 +42,10 @@ export function BrandGuidePanel() {
 
 /* -------------------------------------------------------------------------- */
 
-function Header({
+// Glanceable status badge + reset. Rendered in the page header (next to the
+// "브랜드 가이드" title) rather than inside the panel, so the panel starts
+// straight at the first section instead of an empty utility row.
+export function BrandStatusActions({
   status,
   onReset,
 }: {
@@ -62,15 +62,8 @@ function Header({
   }, [confirming]);
 
   return (
-    <div className="flex items-start justify-between gap-3">
-      {/* Overall state lives in the page heading/description above — the panel
-          header only carries the how-to line + the glanceable status badge. */}
-      <div className="min-w-0 font-kr text-meta text-fg-muted">
-        로고는 필수 · 컬러·타이포그래피·무드는 설명하면 자동 적용
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2">
-        {status === "ready" ? (
+    <div className="flex shrink-0 items-center gap-2">
+      {status === "ready" ? (
           <span className="inline-flex items-center gap-2 rounded-pill bg-mint-soft px-[11px] py-[5px] text-[12px] text-mint">
             <StatusDot tone="active" size={7} />
             LIVE SYNC
@@ -110,7 +103,6 @@ function Header({
             전체 초기화
           </button>
         )}
-      </div>
     </div>
   );
 }
@@ -271,13 +263,10 @@ function PaletteSection() {
         image={palette.image}
         upload={upload}
         clear={clear}
+        uploadLabel="이미지 업로드 · 색상 자동 추출"
       />
 
-      {palette.result.length > 0 ? (
-        <PaletteSync palette={palette.result} />
-      ) : (
-        <PaletteEmpty />
-      )}
+      {palette.result.length > 0 && <PaletteSync palette={palette.result} />}
 
       <TextApplyRow
         section="palette"
@@ -293,21 +282,11 @@ function PaletteSection() {
   );
 }
 
-function PaletteEmpty() {
-  return (
-    <div className="flex h-[60px] items-center justify-center rounded-md border border-dashed border-border-strong/70 bg-surface-2 font-kr text-[11px] text-fg-faint">
-      컬러 분위기를 설명하고 ‘적용’을 누르세요
-    </div>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 
 function TypographySection() {
   const typography = useJobsStore((s) => s.brand.typography);
   const applied = useJobsStore((s) => s.brand.guide.typography);
-  const upload = useJobsStore((s) => s.uploadBrandSectionImage);
-  const clear = useJobsStore((s) => s.clearBrandSectionImage);
   const setText = useJobsStore((s) => s.setBrandSectionText);
   const apply = useJobsStore((s) => s.applyBrandSection);
 
@@ -316,13 +295,6 @@ function TypographySection() {
       label="타이포그래피 시스템"
       hint='예: "고급스러운 세리프" · "Manrope"'
     >
-      <SectionImageRow
-        section="typography"
-        image={typography.image}
-        upload={upload}
-        clear={clear}
-      />
-
       <TypographyPreview heading={applied.heading} body={applied.body} />
 
       <TextApplyRow
@@ -492,11 +464,13 @@ function SectionImageRow({
   image,
   upload,
   clear,
+  uploadLabel = "이미지 업로드",
 }: {
   section: BrandSectionKind;
   image: BrandSectionImage | null;
   upload: (s: BrandSectionKind, f: File) => Promise<void>;
   clear: (s: BrandSectionKind) => void;
+  uploadLabel?: string;
 }) {
   if (image) {
     return (
@@ -511,7 +485,7 @@ function SectionImageRow({
   }
   return (
     <BrandSectionUpload
-      label="이미지 업로드"
+      label={uploadLabel}
       onFile={(f) => upload(section, f)}
       compact
     />

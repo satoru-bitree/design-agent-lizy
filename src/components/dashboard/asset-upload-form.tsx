@@ -338,7 +338,7 @@ export function AssetUploadForm({
       <StepIndicator step={step} />
 
       {/* Step card */}
-      <section className="flex min-h-[360px] flex-col gap-[22px] rounded-xl border border-border bg-surface-1 p-5 sm:p-7">
+      <section className="flex flex-col gap-[22px] rounded-xl border border-border bg-surface-1 p-5 sm:p-7">
         <h2 className="font-kr text-h3 font-bold text-fg">
           {STEP_TITLE[step]}
         </h2>
