@@ -114,6 +114,21 @@
     font-feature-settings: "rlig" 1, "calt" 1;
     min-height: 100vh;
     overflow-x: clip; /* prevent rare horizontal scroll on narrow widths */
+    /* Ambient depth so the near-black canvas reads as an intentional surface
+       rather than empty void — a faint mint glow fixed behind the content. */
+    background-image:
+      radial-gradient(
+        ellipse 85% 60% at 50% -8%,
+        rgba(0, 200, 150, 0.13),
+        transparent 62%
+      ),
+      radial-gradient(
+        ellipse 50% 45% at 85% 4%,
+        rgba(0, 200, 150, 0.07),
+        transparent 60%
+      );
+    background-attachment: fixed;
+    background-repeat: no-repeat;
   }
 
   /* Selection — 민트 소프트 fill */

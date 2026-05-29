@@ -31,7 +31,7 @@ export function BrandGuidePanel() {
   }, [brand.guide.typography]);
 
   return (
-    <aside className="flex flex-col gap-6 rounded-xl border border-border bg-surface-1 p-5 transition-colors duration-micro ease-lz hover:border-border-strong sm:p-6">
+    <aside className="grid grid-cols-1 gap-x-8 gap-y-7 rounded-xl border border-border bg-surface-1 p-5 transition-colors duration-micro ease-lz hover:border-border-strong sm:p-6 lg:grid-cols-2">
       <LogoSection />
       <PaletteSection />
       <TypographySection />
