@@ -7,9 +7,10 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
   Menu,
   X,
-  Palette,
-  LineChart,
-  type LucideIcon,
+  // 데모: 아래 "작업" 섹션을 숨겨 미사용 — 복원 시 함께 되살리기
+  // Palette,
+  // LineChart,
+  // type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,15 +18,17 @@ const TABS: readonly { label: string; href: string }[] = [
   { label: "대시보드", href: "/dashboard" },
   { label: "프로젝트", href: "/projects" },
   { label: "브랜드 가이드", href: "/brand" },
-  { label: "에셋", href: "/assets" },
-  { label: "워크플로우", href: "/workflows" },
+  // 데모: 아직 미구현 화면은 네비에서 숨김 (페이지/라우트 자체는 유지)
+  // { label: "에셋", href: "/assets" },
+  // { label: "워크플로우", href: "/workflows" },
 ] as const;
 
-// `프로젝트` 는 TABS 에 이미 있으므로 작업 섹션에서는 중복 노출 방지.
-const SIDE_ITEMS: readonly { label: string; href: string; icon: LucideIcon }[] = [
-  { label: "스타일 모델", href: "/style-models", icon: Palette },
-  { label: "통계·분석", href: "/analytics", icon: LineChart },
-] as const;
+// 데모: 미구현 화면(스타일 모델·통계·분석) 숨김. 복원 시 이 배열 + 아래
+// "작업" 섹션 + lucide 아이콘 import 를 함께 되살리면 됨.
+// const SIDE_ITEMS: readonly { label: string; href: string; icon: LucideIcon }[] = [
+//   { label: "스타일 모델", href: "/style-models", icon: Palette },
+//   { label: "통계·분석", href: "/analytics", icon: LineChart },
+// ] as const;
 
 export function MobileNav({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
@@ -101,7 +104,8 @@ export function MobileNav({ className }: { className?: string }) {
             ))}
           </nav>
 
-          {/* Sidebar items (project context) */}
+          {/* 데모: 미구현 화면 숨김 — "작업"(스타일 모델·통계·분석) 섹션 비활성화.
+              복원 시 SIDE_ITEMS 배열·아이콘 import 와 함께 아래 블록을 되살리기.
           <nav className="flex flex-col gap-1">
             <span className="mb-1 font-kr text-[11px] uppercase tracking-wider text-fg-muted">
               작업
@@ -124,6 +128,7 @@ export function MobileNav({ className }: { className?: string }) {
               </Link>
             ))}
           </nav>
+          */}
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

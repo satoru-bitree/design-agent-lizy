@@ -10,8 +10,11 @@ const NAV_ITEMS = [
   { label: "대시보드", href: "/dashboard" },
   { label: "프로젝트", href: "/projects" },
   { label: "브랜드 가이드", href: "/brand" },
-  { label: "에셋", href: "/assets" },
-  { label: "워크플로우", href: "/workflows" },
+  // 데모: 아직 미구현 화면은 네비에서 숨김 (페이지/라우트 자체는 유지)
+  // { label: "스타일 모델", href: "/style-models" },
+  // { label: "에셋", href: "/assets" },
+  // { label: "워크플로우", href: "/workflows" },
+  // { label: "통계·분석", href: "/analytics" },
 ] as const;
 
 export type TopNavProps = {
