@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Settings } from "lucide-react";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -72,6 +73,7 @@ export function TopNav({ activeRoute, className }: TopNavProps) {
 
       {/* Right group: bell, settings, avatar (always) + hamburger at <lg */}
       <div className="flex items-center gap-3 sm:gap-[18px] text-fg-dim">
+        <ThemeToggle />
         <button
           type="button"
           aria-label="알림"

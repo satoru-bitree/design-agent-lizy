@@ -9,35 +9,40 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#0D0D0D",
+        // Color tokens resolve through CSS variables (channel triplets) so the
+        // light/dark theme swap in globals.css flows through every utility, and
+        // Tailwind opacity modifiers (e.g. `bg-bg/80`, `border-mint/40`) keep
+        // working via the <alpha-value> placeholder. Pre-alpha tokens
+        // (mint.soft/ring) carry their own alpha and pass through verbatim.
+        bg: "rgb(var(--bg) / <alpha-value>)",
         surface: {
-          1: "#1A1A1A",
-          2: "#262626",
-          3: "#1F1F1F",
+          1: "rgb(var(--surface-1) / <alpha-value>)",
+          2: "rgb(var(--surface-2) / <alpha-value>)",
+          3: "rgb(var(--surface-3) / <alpha-value>)",
         },
         border: {
-          DEFAULT: "#2A2A2A",
-          strong: "#3A3A3A",
+          DEFAULT: "rgb(var(--border) / <alpha-value>)",
+          strong: "rgb(var(--border-strong) / <alpha-value>)",
         },
         fg: {
-          DEFAULT: "#FFFFFF",
-          dim: "#B5B5B5",
-          muted: "#6B6B6B",
-          faint: "#3F3F3F",
+          DEFAULT: "rgb(var(--fg) / <alpha-value>)",
+          dim: "rgb(var(--fg-dim) / <alpha-value>)",
+          muted: "rgb(var(--fg-muted) / <alpha-value>)",
+          faint: "rgb(var(--fg-faint) / <alpha-value>)",
         },
         mint: {
-          DEFAULT: "#00C896",
-          hover: "#0BD9A5",
-          press: "#0EB88C",
-          deep: "#197A61",
-          soft: "rgba(0, 200, 150, 0.12)",
-          ring: "rgba(0, 200, 150, 0.45)",
+          DEFAULT: "rgb(var(--mint) / <alpha-value>)",
+          hover: "rgb(var(--mint-hover) / <alpha-value>)",
+          press: "rgb(var(--mint-press) / <alpha-value>)",
+          deep: "rgb(var(--mint-deep) / <alpha-value>)",
+          soft: "var(--mint-soft)",
+          ring: "var(--mint-ring)",
         },
         state: {
-          success: "#00C896",
-          warning: "#F5A524",
-          danger: "#EF4444",
-          info: "#3B82F6",
+          success: "rgb(var(--success) / <alpha-value>)",
+          warning: "rgb(var(--warning) / <alpha-value>)",
+          danger: "rgb(var(--danger) / <alpha-value>)",
+          info: "rgb(var(--info) / <alpha-value>)",
         },
       },
 

@@ -3,6 +3,7 @@ import { Manrope, Inter, Fraunces, JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { TopNav } from "@/components/layout/top-nav";
 import { StoreRehydrate } from "@/components/store-rehydrate";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -60,8 +61,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0D0D0D",
-  colorScheme: "dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F4F4F5" },
+    { media: "(prefers-color-scheme: dark)", color: "#0D0D0D" },
+  ],
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({
@@ -73,7 +77,6 @@ export default function RootLayout({
     <html
       lang="ko"
       className={cn(
-        "dark",
         manrope.variable,
         inter.variable,
         fraunces.variable,
@@ -82,9 +85,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body>
-        <StoreRehydrate />
-        <TopNav />
-        {children}
+        <ThemeProvider>
+          <StoreRehydrate />
+          <TopNav />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
