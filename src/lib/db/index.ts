@@ -21,7 +21,17 @@ function getPool(): Pool {
       "DATABASE_URL is not set. Add it to .env.local (see .env.local.example).",
     );
   }
-  const pool = new Pool({ connectionString, max: 5 });
+  // Neon's pooled endpoint (…-pooler.…neon.tech) fronts a PgBouncer pool, so
+  // the real connection multiplexing happens server-side. Keep the per-instance
+  // client pool small — Vercel Fluid Compute spins up many instances, and a
+  // large `max` on each would still pile pressure on Neon. SSL is negotiated
+  // from `sslmode=require` in the connection string.
+  const pool = new Pool({
+    connectionString,
+    max: 3,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+  });
   pool.on("error", (e) => {
     // Surfaces idle-client failures so a dead conn doesn't silently rot the
     // pool. Per project convention: never silent-catch.
