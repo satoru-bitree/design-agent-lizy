@@ -344,10 +344,13 @@ export const useJobsStore = create<Store>()((set, get) => ({
       set((state) => ({
         generationProjects,
         jobs: { ...state.jobs, ...jobs },
-        hydrated: true,
       }));
     } catch (e) {
       console.error("[jobs-store] loadProjects failed:", e);
+    } finally {
+      // Flag the load as settled even on failure — the list UI gates its empty
+      // state on `hydrated`, so leaving it false would spin a skeleton forever.
+      set({ hydrated: true });
     }
   },
 

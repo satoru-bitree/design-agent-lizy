@@ -33,6 +33,10 @@ const KIND_LABEL: Record<AssetType, string> = {
 export function ProjectsListClient() {
   const projects = useJobsStore((s) => s.generationProjects);
   const jobs = useJobsStore((s) => s.jobs);
+  // Gate the empty state on the first DB load. Before that, `generationProjects`
+  // is the empty initial state, so reading length alone would flash
+  // "프로젝트 없습니다" on every entry/refresh until /api/projects returns.
+  const hydrated = useJobsStore((s) => s.hydrated);
 
   const list = useMemo(
     () => Object.values(projects).sort((a, b) => b.createdAt - a.createdAt),
@@ -50,7 +54,9 @@ export function ProjectsListClient() {
         </p>
       </header>
 
-      {list.length === 0 ? (
+      {!hydrated ? (
+        <LoadingState />
+      ) : list.length === 0 ? (
         <EmptyState />
       ) : (
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -203,6 +209,39 @@ function StatusBadge({ status }: { status: ProjectStatus }) {
       <StatusDot tone="idle" />
       대기
     </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+/** Skeleton shown while the first /api/projects load is in flight, so entering
+ *  or refreshing the page never flashes the empty state before data arrives. */
+function LoadingState() {
+  return (
+    <ul
+      aria-hidden
+      className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+    >
+      {Array.from({ length: 3 }).map((_, i) => (
+        <li
+          key={i}
+          className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-surface-1"
+        >
+          <div className="aspect-[4/3] w-full animate-pulse bg-surface-2" />
+          <div className="flex flex-1 flex-col gap-3 p-5">
+            <div className="h-5 w-3/4 animate-pulse rounded bg-surface-2" />
+            <div className="flex gap-3">
+              <div className="h-3.5 w-12 animate-pulse rounded bg-surface-2" />
+              <div className="h-3.5 w-12 animate-pulse rounded bg-surface-2" />
+            </div>
+            <div className="mt-auto flex items-center justify-between">
+              <div className="h-3.5 w-16 animate-pulse rounded bg-surface-2" />
+              <div className="h-3.5 w-12 animate-pulse rounded bg-surface-2" />
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
